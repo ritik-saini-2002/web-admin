@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldCheck, Building2, FolderTree,
   Database, RefreshCw, ChevronLeft, ChevronRight, LogOut,
-  Monitor, MousePointer, FolderOpen, Package
+  Monitor, MousePointer, FolderOpen, Package, User
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePcControl } from '../context/PcControlContext';
@@ -14,8 +14,9 @@ import { usePcControl } from '../context/PcControlContext';
 const navItems = [
   { section: 'Overview' },
   { path: '/',            icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/profile',     icon: User,            label: 'My Profile' },
   { section: 'Management' },
-  { path: '/users',       icon: Users,          label: 'Users',            requiredPermission: 'view_all_users' },
+  { path: '/users',       icon: Users,          label: 'Users',            requiredPermission: 'view_all_users', altPermission: 'view_team_users' },
   { path: '/roles',       icon: ShieldCheck,    label: 'Roles',            requiredPermission: 'manage_roles' },
   { path: '/departments', icon: FolderTree,     label: 'Departments',      requiredPermission: 'view_all_users' },
   { path: '/companies',   icon: Building2,      label: 'Companies',        requiredPermission: 'manage_companies' },
@@ -23,10 +24,10 @@ const navItems = [
   { path: '/database',    icon: Database,       label: 'Database Manager', requiredPermission: 'database_manager' },
   { path: '/sync',        icon: RefreshCw,      label: 'Sync Queue',       requiredPermission: 'system_settings' },
   { section: 'PC Control' },
-  { path: '/remote',      icon: Monitor,        label: 'Remote Control' },
-  { path: '/touchpad',    icon: MousePointer,   label: 'Touchpad & Keys' },
-  { path: '/files',       icon: FolderOpen,     label: 'File Browser' },
-  { path: '/apps',        icon: Package,        label: 'App Directory' },
+  { path: '/remote',      icon: Monitor,        label: 'Remote Control',   requiredPermission: 'remote_access' },
+  { path: '/touchpad',    icon: MousePointer,   label: 'Touchpad & Keys',  requiredPermission: 'remote_access' },
+  { path: '/files',       icon: FolderOpen,     label: 'File Browser',     requiredPermission: 'remote_access' },
+  { path: '/apps',        icon: Package,        label: 'App Directory',    requiredPermission: 'remote_access' },
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
@@ -43,7 +44,10 @@ export default function Sidebar({ collapsed, onToggle }) {
   const visibleItems = navItems.filter(item => {
     if (item.section) return true;  // section headers always checked below
     if (!item.requiredPermission) return true;
-    return hasPermission(item.requiredPermission);
+    if (hasPermission(item.requiredPermission)) return true;
+    // Check alternate permission (e.g., view_team_users for /users)
+    if (item.altPermission && hasPermission(item.altPermission)) return true;
+    return false;
   });
 
   // Remove section headers that have no visible items after them
@@ -95,10 +99,10 @@ export default function Sidebar({ collapsed, onToggle }) {
       <div className="sidebar-footer">
         {/* Show current user role */}
         {!collapsed && auth && (
-          <div className="sidebar-user-info">
+          <NavLink to="/profile" className="sidebar-user-info" style={{ textDecoration: 'none', display: 'block', cursor: 'pointer' }}>
             <span className="sidebar-user-name">{auth.name}</span>
             <span className="sidebar-user-role">{auth.role?.replace(/_/g, ' ')}</span>
-          </div>
+          </NavLink>
         )}
         <button className="nav-item" onClick={logout} style={{ width: '100%', color: 'var(--accent-rose)' }}>
           <span className="nav-item-icon"><LogOut size={19} /></span>

@@ -1,6 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // PocketBase API Client — mirrors PocketBaseDataSource.kt
+// Heavy-duty: request caching, dedup, profile & permission management
 // ═══════════════════════════════════════════════════════════════════════════
+
+import { cachedFetch, invalidateCache, invalidateCollection, makeCacheKey } from '../utils/apiCache';
 
 const PB_HOST  = import.meta.env.VITE_PB_HOST  || '192.168.7.28';
 const PB_PORT  = import.meta.env.VITE_PB_PORT  || '5005';
@@ -94,6 +97,10 @@ export async function authenticateAdmin(email, password) {
         department: user.department || '',
         designation: user.designation || '',
         isActive: user.isActive !== false,
+        profile: user.profile || '{}',
+        workStats: user.workStats || '{}',
+        issues: user.issues || '{}',
+        phoneNumber: user.phoneNumber || '',
       };
     }
   } catch (e) {
@@ -154,7 +161,7 @@ export async function checkHealth() {
   } catch { return false; }
 }
 
-// ── Generic CRUD ────────────────────────────────────────────────────────
+// ── Generic CRUD (with caching) ─────────────────────────────────────────
 
 export async function listRecords(collection, params = {}) {
   const token = await getAdminToken();
@@ -166,16 +173,36 @@ export async function listRecords(collection, params = {}) {
   if (params.expand) query.set('expand', params.expand);
   const qs = query.toString();
   const url = `${BASE_URL}/api/collections/${collection}/records${qs ? '?' + qs : ''}`;
-  const res = await request('GET', url, token);
-  if (!res.ok) throw new Error(`listRecords(${collection}) HTTP ${res.status}`);
-  return res.data;
+
+  // Use cache for list operations (30s TTL), skip cache if explicitly requested
+  const cacheKey = makeCacheKey('GET', url, null);
+  if (params.noCache) {
+    invalidateCache(cacheKey);
+  }
+
+  return cachedFetch(
+    () => request('GET', url, token).then(res => {
+      if (!res.ok) throw new Error(`listRecords(${collection}) HTTP ${res.status}`);
+      return res.data;
+    }),
+    cacheKey,
+    params.noCache ? 0 : 30000
+  );
 }
 
 export async function getRecord(collection, id) {
   const token = await getAdminToken();
-  const res = await request('GET', `${BASE_URL}/api/collections/${collection}/records/${id}`, token);
-  if (!res.ok) throw new Error(`getRecord(${collection}, ${id}) HTTP ${res.status}`);
-  return res.data;
+  const url = `${BASE_URL}/api/collections/${collection}/records/${id}`;
+  const cacheKey = makeCacheKey('GET', url, null);
+
+  return cachedFetch(
+    () => request('GET', url, token).then(res => {
+      if (!res.ok) throw new Error(`getRecord(${collection}, ${id}) HTTP ${res.status}`);
+      return res.data;
+    }),
+    cacheKey,
+    15000 // 15s cache for individual records
+  );
 }
 
 export async function createRecord(collection, data) {
@@ -185,6 +212,7 @@ export async function createRecord(collection, data) {
     const msg = parseErrors(res.data);
     throw new Error(msg || `createRecord failed: HTTP ${res.status}`);
   }
+  invalidateCollection(collection);
   return res.data;
 }
 
@@ -195,6 +223,7 @@ export async function updateRecord(collection, id, data) {
     const msg = parseErrors(res.data);
     throw new Error(msg || `updateRecord failed: HTTP ${res.status}`);
   }
+  invalidateCollection(collection);
   return res.data;
 }
 
@@ -202,6 +231,7 @@ export async function deleteRecord(collection, id) {
   const token = await getAdminToken();
   const res = await request('DELETE', `${BASE_URL}/api/collections/${collection}/records/${id}`, token);
   if (!res.ok) throw new Error(`deleteRecord failed: HTTP ${res.status}`);
+  invalidateCollection(collection);
   return true;
 }
 
@@ -269,6 +299,10 @@ export async function createUserFull({
     role, designation, isActive: true, searchTerms, documentPath,
   });
 
+  invalidateCollection(COL_USERS);
+  invalidateCollection(COL_ACCESS_CONTROL);
+  invalidateCollection(COL_SEARCH_INDEX);
+
   return userId;
 }
 
@@ -282,6 +316,8 @@ export async function toggleUserActive(userId, isActive) {
     const acId = acRes.data.items[0].id;
     await request('PATCH', `${BASE_URL}/api/collections/${COL_ACCESS_CONTROL}/records/${acId}`, token, { isActive });
   }
+  invalidateCollection(COL_USERS);
+  invalidateCollection(COL_ACCESS_CONTROL);
 }
 
 export async function changeUserRole(userId, newRole) {
@@ -294,6 +330,8 @@ export async function changeUserRole(userId, newRole) {
     const acId = acRes.data.items[0].id;
     await request('PATCH', `${BASE_URL}/api/collections/${COL_ACCESS_CONTROL}/records/${acId}`, token, { role: newRole, permissions });
   }
+  invalidateCollection(COL_USERS);
+  invalidateCollection(COL_ACCESS_CONTROL);
 }
 
 export async function deleteUserFull(userId) {
@@ -313,6 +351,98 @@ export async function deleteUserFull(userId) {
 
   // Delete user
   await request('DELETE', `${BASE_URL}/api/collections/${COL_USERS}/records/${userId}`, token);
+
+  invalidateCollection(COL_USERS);
+  invalidateCollection(COL_ACCESS_CONTROL);
+  invalidateCollection(COL_SEARCH_INDEX);
+}
+
+// ── Profile Operations ─────────────────────────────────────────────────
+
+/**
+ * Fetch a user's full record from the database.
+ * Uses the user's own auth token for self-profile, or admin token for others.
+ */
+export async function getUserRecord(userId, userToken = null) {
+  const token = userToken || await getAdminToken();
+  const url = `${BASE_URL}/api/collections/${COL_USERS}/records/${userId}`;
+  const res = await request('GET', url, token);
+  if (!res.ok) throw new Error(`getUserRecord(${userId}) HTTP ${res.status}`);
+  return res.data;
+}
+
+/**
+ * Update a user's profile data.
+ * profileData can include: name, profile (JSON), designation, phoneNumber, etc.
+ */
+export async function updateUserProfile(userId, profileData) {
+  const token = await getAdminToken();
+  const res = await request('PATCH', `${BASE_URL}/api/collections/${COL_USERS}/records/${userId}`, token, profileData);
+  if (!res.ok) {
+    const msg = parseErrors(res.data);
+    throw new Error(msg || `updateUserProfile failed: HTTP ${res.status}`);
+  }
+  invalidateCollection(COL_USERS);
+
+  // Also update access_control and search_index if name/department changed
+  if (profileData.name || profileData.department || profileData.designation) {
+    const acRes = await request('GET', `${BASE_URL}/api/collections/${COL_ACCESS_CONTROL}/records?filter=(userId='${userId}')&perPage=1`, token);
+    if (acRes.ok && acRes.data?.items?.length > 0) {
+      const acId = acRes.data.items[0].id;
+      const acUpdate = {};
+      if (profileData.name) acUpdate.name = profileData.name;
+      if (profileData.department) acUpdate.department = profileData.department;
+      if (profileData.designation) acUpdate.designation = profileData.designation;
+      await request('PATCH', `${BASE_URL}/api/collections/${COL_ACCESS_CONTROL}/records/${acId}`, token, acUpdate);
+    }
+    invalidateCollection(COL_ACCESS_CONTROL);
+  }
+
+  return res.data;
+}
+
+// ── Permission Operations ──────────────────────────────────────────────
+
+/**
+ * Update permissions for a specific user (admin only).
+ * Syncs to both users and access_control collections.
+ */
+export async function updateUserPermissions(userId, permissions) {
+  const token = await getAdminToken();
+  const permsJson = JSON.stringify(permissions);
+
+  // Update user record
+  await request('PATCH', `${BASE_URL}/api/collections/${COL_USERS}/records/${userId}`, token, {
+    permissions: permsJson,
+  });
+
+  // Update access control record
+  const acRes = await request('GET', `${BASE_URL}/api/collections/${COL_ACCESS_CONTROL}/records?filter=(userId='${userId}')&perPage=1`, token);
+  if (acRes.ok && acRes.data?.items?.length > 0) {
+    const acId = acRes.data.items[0].id;
+    await request('PATCH', `${BASE_URL}/api/collections/${COL_ACCESS_CONTROL}/records/${acId}`, token, {
+      permissions: permsJson,
+    });
+  }
+
+  invalidateCollection(COL_USERS);
+  invalidateCollection(COL_ACCESS_CONTROL);
+}
+
+/**
+ * Batch update permissions for multiple users (admin only).
+ */
+export async function batchUpdatePermissions(userIds, permissions) {
+  const results = [];
+  for (const userId of userIds) {
+    try {
+      await updateUserPermissions(userId, permissions);
+      results.push({ userId, success: true });
+    } catch (e) {
+      results.push({ userId, success: false, error: e.message });
+    }
+  }
+  return results;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -332,7 +462,7 @@ function sanitize(str) {
   return str.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 }
 
-// Permission mapping — mirrors Permissions.kt
+// Permission mapping — mirrors Permissions.kt (used as FALLBACK for new users)
 function getPermissionsForRole(role) {
   const perms = {
     System_Administrator: [
@@ -340,12 +470,12 @@ function getPermissionsForRole(role) {
       'system_settings','manage_companies','access_all_data','export_data','manage_permissions',
       'access_admin_panel','submit_complaints','view_all_complaints','resolve_complaints',
       'database_manager','view_all_companies','manage_all_companies','edit_system_administrator',
-      'grant_revoke_any_permission','manage_system_settings','view_audit_logs',
+      'grant_revoke_any_permission','manage_system_settings','view_audit_logs','remote_access',
     ],
     Administrator: [
       'create_user','delete_user','modify_user','view_all_users','manage_roles','view_analytics',
       'system_settings','manage_companies','access_all_data','export_data','manage_permissions',
-      'access_admin_panel','submit_complaints','view_all_complaints','resolve_complaints',
+      'access_admin_panel','submit_complaints','view_all_complaints','resolve_complaints','remote_access',
     ],
     Manager: [
       'view_team_users','modify_team_user','view_team_analytics','assign_projects','approve_requests',
