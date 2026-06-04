@@ -119,14 +119,19 @@ export default function TouchpadPage() {
       if (res.ok && res.data?.image) {
         setScreenImg('data:image/jpeg;base64,' + res.data.image);
       }
-    } catch {}
+    } catch {
+      // Screen preview is best-effort while the remote agent is reconnecting.
+    }
   }, [baseUrl, settings.secretKey, connected]);
 
   useEffect(() => {
     if (!autoRefresh || !connected) return;
-    refreshScreen();
+    const initialRefresh = setTimeout(refreshScreen, 0);
     const iv = setInterval(refreshScreen, 3000);
-    return () => clearInterval(iv);
+    return () => {
+      clearTimeout(initialRefresh);
+      clearInterval(iv);
+    };
   }, [autoRefresh, connected, refreshScreen]);
 
   if (!connected) {

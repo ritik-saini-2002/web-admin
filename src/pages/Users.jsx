@@ -38,7 +38,6 @@ export default function UsersPage() {
   // Determine if user should see scoped data
   const isFullAdmin = auth?.isSuperuser || isAdminRole(auth?.role);
   const isManager = auth?.role === 'Manager' || auth?.role === 'Team Lead';
-  const isHR = auth?.role === 'HR';
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -202,7 +201,9 @@ export default function UsersPage() {
                 <tbody>
                   {users.map(user => {
                     let userPerms = [];
-                    try { userPerms = JSON.parse(user.permissions || '[]'); } catch {}
+                    try { userPerms = JSON.parse(user.permissions || '[]'); } catch {
+                      userPerms = [];
+                    }
                     const hasRemote = userPerms.includes('remote_access');
                     return (
                       <tr key={user.id}>
@@ -382,10 +383,10 @@ function CreateUserModal({ open, onClose, onCreated }) {
 
 function ViewUserModal({ user, onClose }) {
   const profile = parseJsonSafe(user.profile) || {};
-  const workStats = parseJsonSafe(user.workStats) || {};
-  const issues = parseJsonSafe(user.issues) || {};
   let permissions = [];
-  try { permissions = JSON.parse(user.permissions || '[]'); } catch { }
+  try { permissions = JSON.parse(user.permissions || '[]'); } catch {
+    permissions = [];
+  }
 
   return (
     <Modal open={true} onClose={onClose} title={`User: ${user.name || user.email}`} large>

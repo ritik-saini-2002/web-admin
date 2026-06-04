@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Building2, Users, RefreshCw, FolderTree, ShieldCheck } from 'lucide-react';
 import { listRecords, COL_COMPANIES } from '../api/pocketbase';
 import { useToast } from '../context/ToastContext';
@@ -9,9 +9,7 @@ export default function CompaniesPage() {
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
 
-  useEffect(() => { load(); }, []);
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listRecords(COL_COMPANIES, { perPage: 200 });
@@ -21,7 +19,9 @@ export default function CompaniesPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) {
     return <div className="loading-overlay"><div className="spinner spinner-lg" /><span>Loading companies...</span></div>;

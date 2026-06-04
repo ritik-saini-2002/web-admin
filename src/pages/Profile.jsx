@@ -109,7 +109,9 @@ export default function ProfilePage() {
   const workStats = parseJsonSafe(userData?.workStats || auth?.workStats) || {};
   const issues = parseJsonSafe(userData?.issues || auth?.issues) || {};
   let permissions = [];
-  try { permissions = JSON.parse(userData?.permissions || '[]'); } catch {}
+  try { permissions = JSON.parse(userData?.permissions || '[]'); } catch {
+    permissions = [];
+  }
   if (permissions.length === 0) permissions = auth?.permissions || [];
 
   return (

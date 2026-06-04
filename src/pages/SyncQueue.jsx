@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Trash2, RotateCw, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
-import { listRecords, deleteRecord, updateRecord } from '../api/pocketbase';
+import { listRecords, deleteRecord } from '../api/pocketbase';
 import { formatDate } from '../utils/helpers';
 import { useToast } from '../context/ToastContext';
 
@@ -20,7 +20,7 @@ export default function SyncQueuePage() {
       const res = await listRecords(SYNC_COLLECTION, { perPage: 100, sort: 'created' });
       setItems(res.items || []);
       setAvailable(true);
-    } catch (e) {
+    } catch {
       // Sync queue might not exist as a PB collection (it's a local Room table)
       setAvailable(false);
       setItems([]);

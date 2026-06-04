@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Building2, ShieldCheck, FolderTree, Activity, TrendingUp,
   Briefcase, Monitor, Award, Clock, CheckCircle, AlertCircle,
@@ -7,7 +7,7 @@ import {
 import { listRecords, COL_USERS, COL_COMPANIES, checkHealth } from '../api/pocketbase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../context/AuthContext';
-import { isAdminRole, isManagementRole, PERMISSION_GROUPS, formatPermission } from '../utils/permissions';
+import { formatPermission } from '../utils/permissions';
 import { parseJsonSafe } from '../utils/helpers';
 import { useNavigate } from 'react-router-dom';
 
@@ -18,19 +18,13 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const canViewAll = hasPermission('view_all_users');
   const canViewTeam = hasPermission('view_team_users');
-  const role = auth?.role || 'Employee';
-
   const [stats, setStats] = useState({ users: 0, active: 0, companies: 0, roles: [], depts: [], serverUp: false });
   const [loading, setLoading] = useState(true);
   const [roleData, setRoleData] = useState([]);
   const [companyData, setCompanyData] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
     setLoading(true);
     try {
       const health = await checkHealth();
@@ -116,7 +110,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [auth, canViewAll, canViewTeam]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   const workStats = parseJsonSafe(auth?.workStats) || {};
   const issues = parseJsonSafe(auth?.issues) || {};

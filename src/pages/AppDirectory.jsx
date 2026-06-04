@@ -21,14 +21,7 @@ export default function AppDirectoryPage() {
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState('');
 
-  useEffect(() => {
-    if (connected) {
-      if (tab === 'apps') loadApps();
-      else loadProcesses();
-    }
-  }, [connected, tab]);
-
-  async function loadApps() {
+  const loadApps = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getInstalledApps(baseUrl, settings.secretKey);
@@ -42,9 +35,9 @@ export default function AppDirectoryPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast, baseUrl, settings.secretKey]);
 
-  async function loadProcesses() {
+  const loadProcesses = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getProcesses(baseUrl, settings.secretKey);
@@ -61,7 +54,14 @@ export default function AppDirectoryPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast, baseUrl, settings.secretKey]);
+
+  useEffect(() => {
+    if (connected) {
+      if (tab === 'apps') loadApps();
+      else loadProcesses();
+    }
+  }, [connected, tab, loadApps, loadProcesses]);
 
   async function handleLaunch(app) {
     setActionLoading(app.name);

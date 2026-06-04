@@ -6,7 +6,7 @@ import {
 import { usePcControl } from '../context/PcControlContext';
 import {
   moveMouse, clickMouse, scrollMouse,
-  pressKey, typeText, captureScreen, holdKey, releaseKey
+  pressKey, captureScreen
 } from '../api/pcControlApi';
 
 // ─── Key mapping: browser event.key → agent key format ──────────────────
@@ -49,7 +49,7 @@ function buildCombo(e, baseKey) {
 }
 
 export default function AdminControl({ onExit }) {
-  const { settings, baseUrl, connected } = usePcControl();
+  const { settings, baseUrl } = usePcControl();
 
   const [active, setActive] = useState(false);
   const [screenImg, setScreenImg] = useState(null);
@@ -57,9 +57,9 @@ export default function AdminControl({ onExit }) {
   const [inputCount, setInputCount] = useState(0);
   const [pointerLocked, setPointerLocked] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [escCount, setEscCount] = useState(0);
 
   const containerRef = useRef(null);
-  const canvasRef = useRef(null);
   const escTimestamps = useRef([]);
   const screenInterval = useRef(null);
   const frameCount = useRef(0);
@@ -74,6 +74,7 @@ export default function AdminControl({ onExit }) {
     setActive(true);
     isActive.current = true;
     escTimestamps.current = [];
+    setEscCount(0);
 
     // Request pointer lock
     if (containerRef.current) {
@@ -89,7 +90,9 @@ export default function AdminControl({ onExit }) {
           setScreenImg('data:image/jpeg;base64,' + res.data.image);
           frameCount.current++;
         }
-      } catch {}
+      } catch {
+        // Screen capture can fail briefly while the remote agent reconnects.
+      }
     }, 800);
 
     // FPS counter
@@ -104,6 +107,7 @@ export default function AdminControl({ onExit }) {
     isActive.current = false;
     setActive(false);
     setPointerLocked(false);
+    setEscCount(0);
 
     // Exit pointer lock
     if (document.pointerLockElement) {
@@ -228,6 +232,7 @@ export default function AdminControl({ onExit }) {
         escTimestamps.current.push(now);
         // Keep only timestamps within last 1.5 seconds
         escTimestamps.current = escTimestamps.current.filter(t => now - t < 1500);
+        setEscCount(escTimestamps.current.length);
         if (escTimestamps.current.length >= 3) {
           exitControl();
           return;
@@ -381,9 +386,9 @@ export default function AdminControl({ onExit }) {
       )}
 
       {/* ESC hint pulse */}
-      {escTimestamps.current.length > 0 && escTimestamps.current.length < 3 && (
+      {escCount > 0 && escCount < 3 && (
         <div className="ac-esc-indicator">
-          ESC × {escTimestamps.current.length} / 3
+          ESC × {escCount} / 3
         </div>
       )}
     </div>

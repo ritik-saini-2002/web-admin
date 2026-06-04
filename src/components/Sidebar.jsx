@@ -32,13 +32,8 @@ const navItems = [
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { logout, auth, hasPermission } = useAuth();
+  const { connected: pcConnected } = usePcControl();
   const location = useLocation();
-
-  let pcConnected = false;
-  try {
-    const pc = usePcControl();
-    pcConnected = pc?.connected || false;
-  } catch {}
 
   // Filter nav items based on permissions
   const visibleItems = navItems.filter(item => {

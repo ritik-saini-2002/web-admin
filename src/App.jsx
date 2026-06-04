@@ -6,6 +6,11 @@ import { PcControlProvider } from './context/PcControlContext';
 import Layout from './components/Layout';
 import { lazy, Suspense, Component } from 'react';
 
+const routerBasename =
+  window.location.pathname === '/web-admin' || window.location.pathname.startsWith('/web-admin/')
+    ? '/web-admin'
+    : undefined;
+
 // ── Lazy-loaded pages for code splitting (heavy-duty optimization) ─────
 const Login          = lazy(() => import('./pages/Login'));
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
@@ -126,7 +131,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <ErrorBoundary>
         <ThemeProvider>
           <AuthProvider>

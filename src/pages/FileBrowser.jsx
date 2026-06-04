@@ -35,20 +35,11 @@ export default function FileBrowserPage() {
   const [viewMode, setViewMode] = useState('list'); // list | grid
   const [specialFolders, setSpecialFolders] = useState([]);
   const [recentPaths, setRecentPaths] = useState([]);
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar] = useState(true);
   const [sortBy, setSortBy] = useState('name'); // name | size | date
   const [sortDir, setSortDir] = useState('asc');
 
-  // ── Load drives on mount ──
-  useEffect(() => {
-    if (connected) {
-      loadDrives();
-      loadSpecialFolders();
-      loadRecentPaths();
-    }
-  }, [connected]);
-
-  async function loadDrives() {
+  const loadDrives = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getDrives(baseUrl, settings.secretKey);
@@ -60,21 +51,34 @@ export default function FileBrowserPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast, baseUrl, settings.secretKey]);
 
-  async function loadSpecialFolders() {
+  const loadSpecialFolders = useCallback(async () => {
     try {
       const res = await getSpecialFolders(baseUrl, settings.secretKey);
       if (res.ok && Array.isArray(res.data)) setSpecialFolders(res.data);
-    } catch {}
-  }
+    } catch {
+      // Optional quick-access metadata can be unavailable on older agents.
+    }
+  }, [baseUrl, settings.secretKey]);
 
-  async function loadRecentPaths() {
+  const loadRecentPaths = useCallback(async () => {
     try {
       const res = await getRecentPaths(baseUrl, settings.secretKey);
       if (res.ok && Array.isArray(res.data)) setRecentPaths(res.data);
-    } catch {}
-  }
+    } catch {
+      // Recent-path metadata is best-effort.
+    }
+  }, [baseUrl, settings.secretKey]);
+
+  // ── Load drives on mount ──
+  useEffect(() => {
+    if (connected) {
+      loadDrives();
+      loadSpecialFolders();
+      loadRecentPaths();
+    }
+  }, [connected, loadDrives, loadSpecialFolders, loadRecentPaths]);
 
   async function navigateTo(path) {
     setLoading(true);
@@ -153,7 +157,6 @@ export default function FileBrowserPage() {
   }
 
   function handleDownload(file) {
-    const url = getDownloadUrl(baseUrl, settings.secretKey, file.path);
     // Open download in new tab with auth header — simplified since we can't set headers on <a> download
     // We'll use fetch + blob approach
     downloadViaFetch(file);

@@ -12,6 +12,11 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(false);
   const refreshTimer = useRef(null);
+  const authRef = useRef(auth);
+
+  useEffect(() => {
+    authRef.current = auth;
+  }, [auth]);
 
   const login = useCallback(async (email, password) => {
     setLoading(true);
@@ -42,8 +47,6 @@ export function AuthProvider({ children }) {
       localStorage.setItem('itc_auth', JSON.stringify(session));
       setAuth(session);
       return session;
-    } catch (e) {
-      throw e;
     } finally {
       setLoading(false);
     }
@@ -60,9 +63,10 @@ export function AuthProvider({ children }) {
    * permissions, profile, role, etc. without requiring re-login.
    */
   const refreshSession = useCallback(async () => {
-    if (!auth || auth.isSuperuser || !auth.userId) return;
+    const currentAuth = authRef.current;
+    if (!currentAuth || currentAuth.isSuperuser || !currentAuth.userId) return;
     try {
-      const user = await getUserRecord(auth.userId, auth.token);
+      const user = await getUserRecord(currentAuth.userId, currentAuth.token);
       if (!user) return;
 
       // Check if disabled
@@ -75,23 +79,23 @@ export function AuthProvider({ children }) {
       try { perms = JSON.parse(user.permissions || '[]'); } catch { perms = []; }
 
       const updated = {
-        ...auth,
-        name: user.name || auth.name,
-        role: user.role || auth.role,
-        permissions: perms.length > 0 ? perms : auth.permissions,
-        companyName: user.companyName || auth.companyName,
-        department: user.department || auth.department,
-        designation: user.designation || auth.designation,
-        profile: user.profile || auth.profile || '{}',
-        workStats: user.workStats || auth.workStats || '{}',
-        issues: user.issues || auth.issues || '{}',
+        ...currentAuth,
+        name: user.name || currentAuth.name,
+        role: user.role || currentAuth.role,
+        permissions: perms.length > 0 ? perms : currentAuth.permissions,
+        companyName: user.companyName || currentAuth.companyName,
+        department: user.department || currentAuth.department,
+        designation: user.designation || currentAuth.designation,
+        profile: user.profile || currentAuth.profile || '{}',
+        workStats: user.workStats || currentAuth.workStats || '{}',
+        issues: user.issues || currentAuth.issues || '{}',
       };
       localStorage.setItem('itc_auth', JSON.stringify(updated));
       setAuth(updated);
     } catch (e) {
       console.warn('Session refresh failed:', e.message);
     }
-  }, [auth, logout]);
+  }, [logout]);
 
   /**
    * Update the user's profile data and refresh session.
@@ -106,16 +110,17 @@ export function AuthProvider({ children }) {
 
   // Auto-refresh session every 60s for non-superusers
   useEffect(() => {
-    if (!auth || auth.isSuperuser || !auth.userId) return;
+    const authUserId = auth?.userId;
+    const authIsSuperuser = auth?.isSuperuser;
+    if (!authUserId || authIsSuperuser) return;
 
-    // Refresh once on mount
-    refreshSession();
-
+    const initialRefresh = setTimeout(refreshSession, 5000);
     refreshTimer.current = setInterval(refreshSession, SESSION_REFRESH_INTERVAL);
     return () => {
+      clearTimeout(initialRefresh);
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
-  }, [auth?.userId]); // Only re-setup when user changes, not on every auth update
+  }, [auth?.userId, auth?.isSuperuser, refreshSession]);
 
   /** Check if logged-in user has a specific permission */
   const hasPermission = useCallback((perm) => {

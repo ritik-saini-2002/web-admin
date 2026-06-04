@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FolderTree, Users, RefreshCw, Building2 } from 'lucide-react';
 import { listRecords, COL_USERS } from '../api/pocketbase';
 import { useToast } from '../context/ToastContext';
@@ -9,9 +9,7 @@ export default function DepartmentsPage() {
   const [selected, setSelected] = useState(null);
   const { addToast } = useToast();
 
-  useEffect(() => { load(); }, []);
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listRecords(COL_USERS, { perPage: 500 });
@@ -39,7 +37,9 @@ export default function DepartmentsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) {
     return <div className="loading-overlay"><div className="spinner spinner-lg" /><span>Loading departments...</span></div>;

@@ -5,9 +5,11 @@
 
 import { cachedFetch, invalidateCache, invalidateCollection, makeCacheKey } from '../utils/apiCache';
 
-const PB_HOST  = import.meta.env.VITE_PB_HOST  || '192.168.7.28';
-const PB_PORT  = import.meta.env.VITE_PB_PORT  || '5005';
-const BASE_URL = `http://${PB_HOST}:${PB_PORT}`;
+const PB_URL = import.meta.env.VITE_PB_URL;
+const PB_HOST = import.meta.env.VITE_PB_HOST || '192.168.5.32';
+const PB_PORT = import.meta.env.VITE_PB_PORT || '';
+const PB_PATH = import.meta.env.VITE_PB_PATH || '/pocketbase';
+const BASE_URL = (PB_URL || `http://${PB_HOST}${PB_PORT ? `:${PB_PORT}` : ''}${PB_PATH}`).replace(/\/+$/, '');
 
 const ADMIN_EMAIL    = import.meta.env.VITE_PB_ADMIN_EMAIL    || '';
 const ADMIN_PASSWORD = import.meta.env.VITE_PB_ADMIN_PASSWORD || '';
@@ -24,26 +26,66 @@ const ADMIN_TOKEN_TTL = 10 * 60 * 1000; // 10 min
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-async function request(method, url, token = '', body = null) {
+async function request(method, url, token = '', body = null, timeout = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const opts = { method, headers };
+  const opts = { method, headers, signal: controller.signal };
   if (body) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
-  const res = await fetch(url, opts);
-  const text = await res.text();
-  let json;
-  try { json = JSON.parse(text); } catch { json = text; }
-  return { ok: res.ok, status: res.status, data: json };
+  try {
+    const res = await fetch(url, opts);
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch { json = text; }
+    return { ok: res.ok, status: res.status, data: json };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── Admin Auth ──────────────────────────────────────────────────────────
 
 /**
  * Authenticate with user-provided credentials (used by the login form).
- * Tries superuser endpoints first, then falls back to regular user auth.
+ * Tries regular user auth first because that is the common login path.
  */
 export async function authenticateAdmin(email, password) {
-  // 1) Try superuser auth
+  // 1) Try regular user auth from users collection
+  try {
+    const res = await request('POST', `${BASE_URL}/api/collections/${COL_USERS}/auth-with-password`, '', {
+      identity: email,
+      password,
+    });
+    if (res.ok && res.data?.token) {
+      adminToken = res.data.token;
+      adminTokenFetchedAt = Date.now();
+      const user = res.data.record || {};
+      let perms = [];
+      try { perms = JSON.parse(user.permissions || '[]'); } catch { perms = []; }
+      return {
+        token: res.data.token,
+        isSuperuser: false,
+        userId: user.id,
+        name: user.name || email.split('@')[0],
+        email: user.email || email,
+        role: user.role || 'Employee',
+        permissions: perms.length > 0 ? perms : getPermissionsForRole(user.role || 'Employee'),
+        companyName: user.companyName || '',
+        department: user.department || '',
+        designation: user.designation || '',
+        isActive: user.isActive !== false,
+        profile: user.profile || '{}',
+        workStats: user.workStats || '{}',
+        issues: user.issues || '{}',
+        phoneNumber: user.phoneNumber || '',
+      };
+    }
+  } catch {
+    // try superuser endpoints below
+  }
+
+  // 2) Try superuser auth
   const superuserEndpoints = [
     `${BASE_URL}/api/collections/_superusers/auth-with-password`,
     `${BASE_URL}/api/admins/auth-with-password`,
@@ -70,41 +112,9 @@ export async function authenticateAdmin(email, password) {
           designation: 'Superuser',
         };
       }
-    } catch (e) {
+    } catch {
       // try next endpoint
     }
-  }
-
-  // 2) Try regular user auth from users collection
-  try {
-    const res = await request('POST', `${BASE_URL}/api/collections/${COL_USERS}/auth-with-password`, '', {
-      identity: email,
-      password,
-    });
-    if (res.ok && res.data?.token) {
-      const user = res.data.record || {};
-      let perms = [];
-      try { perms = JSON.parse(user.permissions || '[]'); } catch { perms = []; }
-      return {
-        token: res.data.token,
-        isSuperuser: false,
-        userId: user.id,
-        name: user.name || email.split('@')[0],
-        email: user.email || email,
-        role: user.role || 'Employee',
-        permissions: perms.length > 0 ? perms : getPermissionsForRole(user.role || 'Employee'),
-        companyName: user.companyName || '',
-        department: user.department || '',
-        designation: user.designation || '',
-        isActive: user.isActive !== false,
-        profile: user.profile || '{}',
-        workStats: user.workStats || '{}',
-        issues: user.issues || '{}',
-        phoneNumber: user.phoneNumber || '',
-      };
-    }
-  } catch (e) {
-    // fall through
   }
 
   throw new Error('Invalid credentials or PocketBase is unreachable.');
@@ -117,6 +127,10 @@ export async function authenticateAdmin(email, password) {
 export async function getAdminToken() {
   const now = Date.now();
   if (adminToken && (now - adminTokenFetchedAt) < ADMIN_TOKEN_TTL) return adminToken;
+
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    throw new Error('No active auth token and no admin credentials configured');
+  }
 
   const endpoints = [
     `${BASE_URL}/api/collections/_superusers/auth-with-password`,

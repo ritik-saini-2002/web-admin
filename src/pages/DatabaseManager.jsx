@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Database, RefreshCw, ChevronRight, Eye, Table2, Search, Code2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Database, RefreshCw, ChevronRight, Table2, Code2 } from 'lucide-react';
 import { listCollections, listRecords } from '../api/pocketbase';
 import { useToast } from '../context/ToastContext';
 import { formatDate } from '../utils/helpers';
@@ -12,13 +12,10 @@ export default function DatabaseManagerPage() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordPage, setRecordPage] = useState(1);
   const [recordTotal, setRecordTotal] = useState(0);
-  const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('table'); // table | json
   const { addToast } = useToast();
 
-  useEffect(() => { loadCollections(); }, []);
-
-  async function loadCollections() {
+  const loadCollections = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listCollections();
@@ -38,12 +35,13 @@ export default function DatabaseManagerPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [addToast]);
+
+  useEffect(() => { loadCollections(); }, [loadCollections]);
 
   async function selectCollection(col) {
     setSelectedCol(col);
     setRecordPage(1);
-    setSearch('');
     await loadRecords(col.name, 1);
   }
 

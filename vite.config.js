@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import http from 'http'
-import https from 'https'
+import { Buffer } from 'buffer'
 import { URL } from 'url'
 
 /**
@@ -123,8 +123,12 @@ function pcProxyPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './',
   plugins: [
     react(),
     pcProxyPlugin(),
   ],
+  server: {
+    host: '0.0.0.0',
+  },
 })

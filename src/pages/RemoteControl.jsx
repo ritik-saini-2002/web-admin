@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Monitor, Wifi, WifiOff, Lock, Moon, Camera, Volume2, VolumeX,
   Power, RotateCcw, Settings, Keyboard, RefreshCw, Zap, Activity,
@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { usePcControl } from '../context/PcControlContext';
 import {
-  executeQuickStep, captureScreen, getProcesses,
+  executeQuickStep, captureScreen,
   PC_SYSTEM_COMMANDS
 } from '../api/pcControlApi';
 import { useToast } from '../context/ToastContext';

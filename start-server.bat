@@ -1,6 +1,6 @@
 @echo off
 :: IT Connect Web Admin - Background Server Launcher
-:: Serves the dist folder on port 5008
+:: Serves the dist folder and /pcproxy route on port 5008
 :: Auto-hides console and runs in background
 
 :: Check if this script is already running hidden
@@ -22,12 +22,12 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5008 " ^| findstr "LISTENIN
     taskkill /F /PID %%a >nul 2>&1
 )
 
-:: Check if http-server is installed globally
-where npx >nul 2>&1
+:: Check if Node.js is installed
+where node >nul 2>&1
 if errorlevel 1 (
-    echo Node.js/npm not found. Please install Node.js first.
+    echo Node.js not found. Please install Node.js first.
     exit /b 1
 )
 
-:: Start http-server on port 5008 serving the dist folder
-npx -y http-server ./dist -p 5008 -c-1 --cors -s >nul 2>&1
+:: Start the production server on all network interfaces
+node production-server.mjs >nul 2>&1

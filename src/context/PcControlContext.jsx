@@ -4,13 +4,23 @@ import { ping } from '../api/pcControlApi';
 const PcControlContext = createContext(null);
 
 const STORAGE_KEY = 'itc_pc_control';
+const DEFAULT_SECRET_KEY = 'Ritik@2002';
+const PREVIOUS_DEFAULT_SECRET_KEY = 'Saini@2004';
 
 function loadSettings() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch {}
-  return { ip: '', port: 5000, secretKey: 'Ritik@2002' };
+    if (saved) {
+      const settings = JSON.parse(saved);
+      if (settings.secretKey === PREVIOUS_DEFAULT_SECRET_KEY) {
+        return { ...settings, secretKey: DEFAULT_SECRET_KEY };
+      }
+      return settings;
+    }
+  } catch {
+    // Ignore invalid local storage and fall back to defaults.
+  }
+  return { ip: '', port: 5000, secretKey: DEFAULT_SECRET_KEY };
 }
 
 function saveSettings(settings) {
@@ -65,9 +75,10 @@ export function PcControlProvider({ children }) {
   // Auto-ping every 8 seconds when IP is configured
   useEffect(() => {
     if (!settings.ip) return;
-    doPing();
+    const initialPing = setTimeout(doPing, 0);
     pingTimerRef.current = setInterval(doPing, 8000);
     return () => {
+      clearTimeout(initialPing);
       if (pingTimerRef.current) clearInterval(pingTimerRef.current);
     };
   }, [settings.ip, settings.port, settings.secretKey, doPing]);
