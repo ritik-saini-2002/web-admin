@@ -6,7 +6,7 @@ import {
 import { usePcControl } from '../context/PcControlContext';
 import {
   moveMouse, clickMouse, scrollMouse,
-  pressKey, captureScreen
+  pressKey, getScreenStreamUrl
 } from '../api/pcControlApi';
 
 // ─── Key mapping: browser event.key → agent key format ──────────────────
@@ -52,7 +52,8 @@ export default function AdminControl({ onExit }) {
   const { settings, baseUrl } = usePcControl();
 
   const [active, setActive] = useState(false);
-  const [screenImg, setScreenImg] = useState(null);
+  const [streamSrc, setStreamSrc] = useState('');
+  const [streamReady, setStreamReady] = useState(false);
   const [fps, setFps] = useState(0);
   const [inputCount, setInputCount] = useState(0);
   const [pointerLocked, setPointerLocked] = useState(false);
@@ -61,9 +62,6 @@ export default function AdminControl({ onExit }) {
 
   const containerRef = useRef(null);
   const escTimestamps = useRef([]);
-  const screenInterval = useRef(null);
-  const frameCount = useRef(0);
-  const fpsInterval = useRef(null);
   const isActive = useRef(false);
   const mouseSensitivity = 1.5;
   const scrollSensitivity = 3;
@@ -71,35 +69,25 @@ export default function AdminControl({ onExit }) {
 
   // ─── Start admin control ──────────────────────────────────
   const startControl = useCallback(() => {
+    const src = getScreenStreamUrl(baseUrl, settings.secretKey, {
+      streamPort: 5001,
+      width: 1920,
+      quality: 75,
+      fps: 20,
+    });
+    setStreamSrc(src);
+    setStreamReady(true);
+    setFps(20);
     setActive(true);
     isActive.current = true;
     escTimestamps.current = [];
     setEscCount(0);
 
-    // Request pointer lock
-    if (containerRef.current) {
-      containerRef.current.requestPointerLock?.();
-    }
-
-    // Start screen capture loop
-    screenInterval.current = setInterval(async () => {
-      if (!isActive.current) return;
-      try {
-        const res = await captureScreen(baseUrl, settings.secretKey, 35, 3);
-        if (res.ok && res.data?.image) {
-          setScreenImg('data:image/jpeg;base64,' + res.data.image);
-          frameCount.current++;
-        }
-      } catch {
-        // Screen capture can fail briefly while the remote agent reconnects.
-      }
-    }, 800);
-
-    // FPS counter
-    fpsInterval.current = setInterval(() => {
-      setFps(frameCount.current);
-      frameCount.current = 0;
-    }, 1000);
+    // The active container is rendered after setActive; request lock after paint.
+    setTimeout(() => {
+      containerRef.current?.focus();
+      containerRef.current?.requestPointerLock?.();
+    }, 0);
   }, [baseUrl, settings.secretKey]);
 
   // ─── Exit admin control ───────────────────────────────────
@@ -117,9 +105,6 @@ export default function AdminControl({ onExit }) {
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
-
-    clearInterval(screenInterval.current);
-    clearInterval(fpsInterval.current);
 
     onExit?.();
   }, [onExit]);
@@ -170,6 +155,7 @@ export default function AdminControl({ onExit }) {
 
     function handleMouseDown(e) {
       if (!isActive.current) return;
+      if (e.target?.closest?.('.ac-bar-btn')) return;
       e.preventDefault();
       const buttonMap = { 0: 'left', 1: 'middle', 2: 'right' };
       const button = buttonMap[e.button] || 'left';
@@ -264,8 +250,6 @@ export default function AdminControl({ onExit }) {
   useEffect(() => {
     return () => {
       isActive.current = false;
-      clearInterval(screenInterval.current);
-      clearInterval(fpsInterval.current);
       if (document.pointerLockElement) document.exitPointerLock();
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     };
@@ -344,7 +328,7 @@ export default function AdminControl({ onExit }) {
             <Mouse size={12} /> {pointerLocked ? 'Locked' : 'Click to lock'}
           </span>
           <span className="ac-stat">
-            <Monitor size={12} /> {fps} FPS
+            <Monitor size={12} /> {streamReady ? `${fps} FPS stream` : 'Connecting'}
           </span>
           <span className="ac-stat">
             <Wifi size={12} /> {inputCount} inputs
@@ -366,9 +350,17 @@ export default function AdminControl({ onExit }) {
           containerRef.current.requestPointerLock?.();
         }
       }}>
-        {screenImg ? (
-          <img src={screenImg} alt="Remote PC Screen" className="ac-screen-img" draggable={false} />
-        ) : (
+        {streamSrc && (
+          <img
+            src={streamSrc}
+            alt="Remote PC Screen"
+            className="ac-screen-img"
+            draggable={false}
+            onLoad={() => setStreamReady(true)}
+            onError={() => setStreamReady(false)}
+          />
+        )}
+        {!streamReady && (
           <div className="ac-screen-loading">
             <div className="spinner spinner-lg" />
             <p>Connecting to remote display...</p>

@@ -3131,3 +3131,131 @@ tr:last-child td {
 .active-all {
   color: var(--accent-emerald) !important;
 }
+
+/* Centralized PC registry */
+.rc-agent-registry {
+  margin-bottom: 24px;
+}
+
+.rc-agent-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.rc-agent-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 0.98rem;
+}
+
+.rc-agent-header p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+}
+
+.rc-agent-error {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: var(--radius-md);
+  background: var(--accent-rose-soft);
+  color: var(--accent-rose);
+  font-size: 0.82rem;
+}
+
+.rc-agent-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.rc-agent-card {
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-deep);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.rc-agent-card:hover,
+.rc-agent-card.active {
+  border-color: var(--accent-cyan);
+  background: var(--accent-cyan-soft);
+  transform: translateY(-1px);
+}
+
+.rc-agent-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.rc-agent-card strong,
+.rc-agent-card span,
+.rc-agent-card small {
+  display: block;
+}
+
+.rc-agent-card strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.rc-agent-card span {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.rc-agent-card small,
+.rc-agent-last {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+}
+
+.rc-agent-password-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.rc-agent-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 90px;
+  color: var(--text-tertiary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-deep);
+}
+
+.ac-screen-loading {
+  position: absolute;
+  inset: 0;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+@media (max-width: 720px) {
+  .rc-agent-header,
+  .rc-agent-password-row {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

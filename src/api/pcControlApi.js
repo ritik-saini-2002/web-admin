@@ -5,43 +5,43 @@
 /**
  * All calls go to the IT Connect Agent running on the target PC.
  * Base URL format:  http://<ip>:<port>
- * Default port: 5000, Default secret: "Ritik@2002"
+ * Default port: 5000
  *
- * IMPORTANT — CORS Proxy:
+ * CORS Proxy:
  * Browsers block cross-origin requests. Since the PC Agent doesn't serve
  * CORS headers, we route ALL requests through a local Vite middleware at
- * /pcproxy/<ip>/<port>/<path>. This runs on YOUR machine (the source
- * computer), NOT a remote server. The chain is:
+ * /pcproxy/<ip>/<port>/<path>. The chain is:
  *
  *   Browser  →  Vite dev server (localhost)  →  PC Agent (target IP)
- *   ^^^^^^      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- *   same machine as the browser             direct to target
  */
 
 // ── Helper ─────────────────────────────────────────────────────────────────
 
-/**
- * Convert a baseUrl like "http://192.168.1.5:5000" into
- * a proxy prefix like "/pcproxy/192.168.1.5/5000"
- */
 function toProxyUrl(baseUrl, path) {
   try {
-    // baseUrl = "http://192.168.1.5:5000"
     const parsed = new URL(path.startsWith('http') ? path : baseUrl + path);
-    const ip = parsed.hostname;
-    const port = parsed.port || '5000';
-    const rest = parsed.pathname + parsed.search;
+    const ip     = parsed.hostname;
+    const port   = parsed.port || '5000';
+    const rest   = parsed.pathname + parsed.search;
     return `/pcproxy/${ip}/${port}${rest}`;
   } catch {
-    // Fallback: try extracting manually
     const match = baseUrl.match(/^https?:\/\/([^:]+):?(\d+)?/);
     if (match) {
-      const ip = match[1];
+      const ip   = match[1];
       const port = match[2] || '5000';
       return `/pcproxy/${ip}/${port}${path}`;
     }
-    // Last resort: use original URL (will fail with CORS, but at least shows error)
     return baseUrl + path;
+  }
+}
+
+function withPort(baseUrl, port) {
+  try {
+    const parsed = new URL(baseUrl);
+    parsed.port = String(port);
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return baseUrl;
   }
 }
 
@@ -49,15 +49,15 @@ async function agentRequest(method, url, secretKey, body = null, timeout = 15000
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const headers = {
-    'Content-Type': 'application/json',
-    'X-Secret-Key': secretKey,
+    'Content-Type':  'application/json',
+    'X-Secret-Key':  secretKey,
     'X-Device-Name': 'WebAdmin/' + navigator.userAgent.split(' ').pop(),
-    'X-Device-Id': 'web_admin_' + (localStorage.getItem('itc_device_id') || generateDeviceId()),
+    'X-Device-Id':   'web_admin_' + (localStorage.getItem('itc_device_id') || generateDeviceId()),
   };
   const opts = { method, headers, signal: controller.signal };
   if (body) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
   try {
-    const res = await fetch(url, opts);
+    const res  = await fetch(url, opts);
     clearTimeout(timer);
     const text = await res.text();
     let json;
@@ -69,7 +69,6 @@ async function agentRequest(method, url, secretKey, body = null, timeout = 15000
   }
 }
 
-/** Proxy-aware request: converts baseUrl + path into /pcproxy/... route */
 function proxyRequest(method, baseUrl, path, secretKey, body = null, timeout = 15000) {
   const proxiedUrl = toProxyUrl(baseUrl, path);
   return agentRequest(method, proxiedUrl, secretKey, body, timeout);
@@ -99,6 +98,18 @@ export async function getScreenSize(baseUrl, secretKey) {
 
 export async function captureScreen(baseUrl, secretKey, quality = 25, scale = 4) {
   return proxyRequest('GET', baseUrl, `/screen/capture?q=${quality}&s=${scale}`, secretKey);
+}
+
+export function getScreenStreamUrl(baseUrl, secretKey, options = {}) {
+  const width       = options.width      || 1920;
+  const quality     = options.quality    || 75;
+  const fps         = options.fps        || 20;
+  const streamPort  = options.streamPort || 5001;
+  const streamBaseUrl = withPort(baseUrl, streamPort);
+  return toProxyUrl(
+      streamBaseUrl,
+      `/screen/stream?key=${enc(secretKey)}&w=${enc(width)}&q=${enc(quality)}&fps=${enc(fps)}`,
+  );
 }
 
 export async function fetchScreenSnapshot(baseUrl, secretKey) {
@@ -179,7 +190,11 @@ export async function browseDir(baseUrl, secretKey, path, exts = '') {
 }
 
 export async function searchFiles(baseUrl, secretKey, rootPath, query, maxResults = 100) {
-  return proxyRequest('GET', baseUrl, `/browse/search?path=${enc(rootPath)}&q=${enc(query)}&maxResults=${maxResults}`, secretKey);
+  return proxyRequest(
+      'GET', baseUrl,
+      `/browse/search?path=${enc(rootPath)}&q=${enc(query)}&maxResults=${maxResults}`,
+      secretKey,
+  );
 }
 
 export async function getInstalledApps(baseUrl, secretKey) {
@@ -197,7 +212,6 @@ export async function getRecentPaths(baseUrl, secretKey) {
 // ── File Transfer ──────────────────────────────────────────────────────────
 
 export function getDownloadUrl(baseUrl, secretKey, remotePath) {
-  // Download also goes through proxy
   return toProxyUrl(baseUrl, `/file/download?path=${enc(remotePath)}`);
 }
 
@@ -210,9 +224,9 @@ export async function uploadFile(baseUrl, secretKey, file, remotePath) {
     const res = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
-        'X-Secret-Key': secretKey,
+        'X-Secret-Key':  secretKey,
         'X-Device-Name': 'WebAdmin',
-        'X-Device-Id': localStorage.getItem('itc_device_id') || 'web_admin',
+        'X-Device-Id':   localStorage.getItem('itc_device_id') || 'web_admin',
       },
       body: formData,
     });
@@ -247,15 +261,15 @@ export async function getConnectionLogs(baseUrl, masterKey) {
 
 export async function launchApp(baseUrl, secretKey, appPath) {
   return proxyRequest('POST', baseUrl, '/quick', secretKey, {
-    type: 'LAUNCH_APP',
+    type:  'LAUNCH_APP',
     value: appPath,
-    args: [appPath],
+    args:  [appPath],
   });
 }
 
 export async function killApp(baseUrl, secretKey, processName) {
   return proxyRequest('POST', baseUrl, '/quick', secretKey, {
-    type: 'KILL_APP',
+    type:  'KILL_APP',
     value: processName,
   });
 }
@@ -280,40 +294,40 @@ export const PC_COMMON_KEYS = [
 ];
 
 export const PC_SYSTEM_COMMANDS = [
-  { id: 'LOCK', label: 'Lock PC', icon: '🔒' },
-  { id: 'SLEEP', label: 'Sleep', icon: '😴' },
-  { id: 'SHUTDOWN', label: 'Shutdown', icon: '⏻' },
-  { id: 'RESTART', label: 'Restart', icon: '🔄' },
-  { id: 'VOLUME_UP', label: 'Volume Up', icon: '🔊' },
-  { id: 'VOLUME_DOWN', label: 'Volume Down', icon: '🔉' },
-  { id: 'MUTE', label: 'Mute', icon: '🔇' },
-  { id: 'SCREENSHOT', label: 'Screenshot', icon: '📸' },
-  { id: 'TASK_MANAGER', label: 'Task Manager', icon: '📊' },
-  { id: 'SETTINGS', label: 'Settings', icon: '⚙️' },
-  { id: 'CONTROL_PANEL', label: 'Control Panel', icon: '🎛️' },
-  { id: 'OPEN_URL', label: 'Open URL', icon: '🌐' },
+  { id: 'LOCK',          label: 'Lock PC',       icon: '🔒' },
+  { id: 'SLEEP',         label: 'Sleep',          icon: '😴' },
+  { id: 'SHUTDOWN',      label: 'Shutdown',       icon: '⏻'  },
+  { id: 'RESTART',       label: 'Restart',        icon: '🔄' },
+  { id: 'VOLUME_UP',     label: 'Volume Up',      icon: '🔊' },
+  { id: 'VOLUME_DOWN',   label: 'Volume Down',    icon: '🔉' },
+  { id: 'MUTE',          label: 'Mute',           icon: '🔇' },
+  { id: 'SCREENSHOT',    label: 'Screenshot',     icon: '📸' },
+  { id: 'TASK_MANAGER',  label: 'Task Manager',   icon: '📊' },
+  { id: 'SETTINGS',      label: 'Settings',       icon: '⚙️' },
+  { id: 'CONTROL_PANEL', label: 'Control Panel',  icon: '🎛️' },
+  { id: 'OPEN_URL',      label: 'Open URL',       icon: '🌐' },
 ];
 
 export function getFileIcon(ext) {
   if (!ext) return '📄';
   const e = ext.toLowerCase();
-  if (['mp4','mkv','avi','mov','wmv'].includes(e)) return '🎬';
-  if (['mp3','wav','flac','aac','m4a'].includes(e)) return '🎵';
+  if (['mp4','mkv','avi','mov','wmv'].includes(e))         return '🎬';
+  if (['mp3','wav','flac','aac','m4a'].includes(e))        return '🎵';
   if (['jpg','jpeg','png','gif','bmp','webp'].includes(e)) return '🖼️';
-  if (e === 'pdf') return '📕';
-  if (['doc','docx','rtf'].includes(e)) return '📘';
-  if (['xls','xlsx','csv'].includes(e)) return '📗';
-  if (['ppt','pptx'].includes(e)) return '📊';
-  if (['py','bat','ps1','sh','cmd'].includes(e)) return '⚙️';
-  if (['txt','log','md'].includes(e)) return '📄';
-  if (['zip','rar','7z','tar','gz'].includes(e)) return '🗜️';
-  if (['exe','msi'].includes(e)) return '🖥️';
+  if (e === 'pdf')                                         return '📕';
+  if (['doc','docx','rtf'].includes(e))                    return '📘';
+  if (['xls','xlsx','csv'].includes(e))                    return '📗';
+  if (['ppt','pptx'].includes(e))                          return '📊';
+  if (['py','bat','ps1','sh','cmd'].includes(e))           return '⚙️';
+  if (['txt','log','md'].includes(e))                      return '📄';
+  if (['zip','rar','7z','tar','gz'].includes(e))           return '🗜️';
+  if (['exe','msi'].includes(e))                           return '🖥️';
   return '📂';
 }
 
 export function formatFileSize(kb) {
-  if (kb < 1) return '0 KB';
-  if (kb < 1024) return `${kb} KB`;
+  if (kb < 1)           return '0 KB';
+  if (kb < 1024)        return `${kb} KB`;
   if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(1)} MB`;
   return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
 }

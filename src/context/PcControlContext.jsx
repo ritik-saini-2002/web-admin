@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { ping } from '../api/pcControlApi';
+import { getScreenSize, ping } from '../api/pcControlApi';
 
 const PcControlContext = createContext(null);
 
@@ -32,6 +32,7 @@ export function PcControlProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [pcName, setPcName] = useState('');
   const [pinging, setPinging] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
   const pingTimerRef = useRef(null);
 
   const baseUrl = settings.ip ? `http://${settings.ip}:${settings.port}` : '';
@@ -48,25 +49,42 @@ export function PcControlProvider({ children }) {
     if (!settings.ip) {
       setConnected(false);
       setPcName('');
+      setConnectionError('');
       return false;
     }
     setPinging(true);
     try {
       const res = await ping(baseUrl, settings.secretKey);
-      if (res.ok && res.data) {
-        setConnected(true);
-        setPcName(res.data.pc_name || res.data.pcName || 'Unknown PC');
-        setPinging(false);
-        return true;
-      } else {
+      if (!res.ok || !res.data) {
         setConnected(false);
         setPcName('');
+        setConnectionError(res.error || res.data?.error || 'PC agent is not reachable from this server.');
         setPinging(false);
         return false;
       }
+
+      const accessCheck = await getScreenSize(baseUrl, settings.secretKey);
+      if (!accessCheck.ok) {
+        setConnected(false);
+        setPcName('');
+        setConnectionError(
+          accessCheck.status === 401
+            ? 'PC is reachable, but the secret key is rejected.'
+            : accessCheck.error || accessCheck.data?.error || 'PC control endpoint is not reachable from this server.',
+        );
+        setPinging(false);
+        return false;
+      }
+
+      setConnected(true);
+      setPcName(res.data.pc_name || res.data.pcName || 'Unknown PC');
+      setConnectionError('');
+      setPinging(false);
+      return true;
     } catch {
       setConnected(false);
       setPcName('');
+      setConnectionError('PC agent is not reachable from this server.');
       setPinging(false);
       return false;
     }
@@ -86,13 +104,14 @@ export function PcControlProvider({ children }) {
   const disconnect = useCallback(() => {
     setConnected(false);
     setPcName('');
+    setConnectionError('');
     if (pingTimerRef.current) clearInterval(pingTimerRef.current);
   }, []);
 
   return (
     <PcControlContext.Provider value={{
       settings, updateSettings,
-      baseUrl, connected, pcName, pinging,
+      baseUrl, connected, pcName, pinging, connectionError,
       doPing, disconnect,
     }}>
       {children}
