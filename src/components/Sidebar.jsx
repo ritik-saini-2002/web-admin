@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldCheck, Building2, FolderTree,
   Database, RefreshCw, ChevronLeft, ChevronRight, LogOut,
-  Monitor, MousePointer, FolderOpen, Package, User
+  Monitor, MousePointer, FolderOpen, Package, User, AtomIcon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePcControl } from '../context/PcControlContext';
@@ -28,6 +28,7 @@ const navItems = [
   { path: '/touchpad',    icon: MousePointer,   label: 'Touchpad & Keys',  requiredPermission: 'remote_access' },
   { path: '/files',       icon: FolderOpen,     label: 'File Browser',     requiredPermission: 'remote_access' },
   { path: '/apps',        icon: Package,        label: 'App Directory',    requiredPermission: 'remote_access' },
+  { path: '/ai',   icon: AtomIcon,       label: 'AI control',       requiredPermission: 'remote_access' },
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {

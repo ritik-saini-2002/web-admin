@@ -1,14 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Monitor, Wifi, WifiOff, Lock, Moon, Camera, Volume2, VolumeX,
   Power, RotateCcw, Settings, Keyboard, RefreshCw, Zap, Activity,
-  ArrowUp, ArrowDown, Layout, Terminal, Globe, Image, Shield
+  ArrowDown, Layout, Globe, Image, Shield, ZoomIn, ZoomOut, RotateCcw as ResetIcon
 } from 'lucide-react';
 import { usePcControl } from '../context/PcControlContext';
-import {
-  executeQuickStep, captureScreen,
-  PC_SYSTEM_COMMANDS
-} from '../api/pcControlApi';
+import { executeQuickStep, captureScreen, getScreenStreamUrl } from '../api/pcControlApi';
 import { useToast } from '../context/ToastContext';
 import AdminControl from '../components/AdminControl';
 import { listPcAgents } from '../api/pocketbase';
@@ -40,16 +37,7 @@ const WIN_SHORTCUTS = [
   { key: 'WIN+S',          label: 'Search'     },
 ];
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * An agent is considered online when:
- *  - status field is "online"  AND
- *  - last_seen is within the last 120 seconds
- *
- * 120 s gives 8 missed heartbeats at the default 15 s interval, which
- * handles occasional network hiccups without false-offline flicker.
- */
+// Agent online: status=online AND last_seen within 120s (8 missed heartbeats tolerance)
 function isAgentOnline(agent) {
   const lastSeen = Date.parse(agent.last_seen || agent.updated || '');
   if (!lastSeen) return agent.status === 'online';
@@ -65,8 +53,6 @@ function formatLastSeen(value) {
   return `${Math.round(seconds / 60)}m ago`;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
-
 export default function RemoteControlPage() {
   const {
     settings, updateSettings, baseUrl,
@@ -74,75 +60,107 @@ export default function RemoteControlPage() {
   } = usePcControl();
   const { addToast } = useToast();
 
-  const [formIp,          setFormIp]          = useState(settings.ip);
-  const [formPort,        setFormPort]        = useState(settings.port);
-  const [formKey,         setFormKey]         = useState(settings.secretKey);
-  const [screenImg,       setScreenImg]       = useState(null);
-  const [loadingScreen,   setLoadingScreen]   = useState(false);
-  const [actionLoading,   setActionLoading]   = useState('');
-  const [showAdminControl,setShowAdminControl]= useState(false);
-  const [agents,          setAgents]          = useState([]);
-  const [agentsLoading,   setAgentsLoading]   = useState(false);
-  const [agentsError,     setAgentsError]     = useState('');
-  const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [agentPassword,   setAgentPassword]   = useState('');
+  const [formIp,  setFormIp]  = useState(settings.ip);
+  const [formPort, setFormPort] = useState(settings.port);
+  const [formKey, setFormKey] = useState(settings.secretKey);
 
-  // Sync form fields when settings change (e.g. from auto-connect)
+  // Screen preview state
+  const [screenImg, setScreenImg]     = useState(null);
+  const [screenQuality, setScreenQuality] = useState('1080p');
+  const [loadingScreen, setLoadingScreen] = useState(false);
+  const [screenZoom, setScreenZoom]   = useState(1);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
+  const [actionLoading, setActionLoading] = useState('');
+  const [showAdminControl, setShowAdminControl] = useState(false);
+
+  // PC Registry
+  const [agents, setAgents]             = useState([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [agentsError, setAgentsError]   = useState('');
+  const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [agentPassword, setAgentPassword] = useState('');
+  const [lastRefreshed, setLastRefreshed] = useState(null);
+
+  // Background polling — agents poll silently every 15s
+  const agentsPollRef  = useRef(null);
+  const screenPollRef  = useRef(null);
+  const isPollRunning  = useRef(false);
+
+  // Sync form fields when settings change
   useEffect(() => {
     setFormIp(settings.ip);
     setFormPort(settings.port);
     setFormKey(settings.secretKey);
   }, [settings]);
 
-  // ── PC Registry ────────────────────────────────────────────────────────────
-  const loadAgents = useCallback(async () => {
-    setAgentsLoading(true);
+  // ── PC Registry polling (background, every 15s) ───────────────────────────
+  const loadAgents = useCallback(async (silent = false) => {
+    if (isPollRunning.current && silent) return; // skip if already running
+    isPollRunning.current = true;
+    if (!silent) setAgentsLoading(true);
     try {
       const res   = await listPcAgents();
       const items = Array.isArray(res?.items) ? res.items : [];
       setAgents(items);
       setAgentsError('');
-      // Auto-select the first online PC if nothing is selected yet
+      setLastRefreshed(new Date());
+      // Auto-select first online PC if nothing selected
       if (!selectedAgentId) {
         const firstOnline = items.find(isAgentOnline);
         if (firstOnline) setSelectedAgentId(firstOnline.id);
       }
     } catch (e) {
-      const msg = e.message || 'Unable to load running PCs from PocketBase.';
-      // Give a friendlier hint when the session has expired
-      setAgentsError(
-          msg.includes('Session expired') || msg.includes('not logged in')
-              ? 'Session expired — please log in again to see running PCs.'
-              : msg + ' — ensure the pc_agents collection exists in PocketBase.',
-      );
+      const msg = e.message || 'Unable to load PCs from PocketBase.';
+      if (!silent) {
+        setAgentsError(
+            msg.includes('Session expired') || msg.includes('not logged in')
+                ? 'Session expired — please log in again.'
+                : msg + ' — ensure pc_agents collection exists.',
+        );
+      }
     } finally {
-      setAgentsLoading(false);
+      if (!silent) setAgentsLoading(false);
+      isPollRunning.current = false;
     }
   }, [selectedAgentId]);
 
   useEffect(() => {
-    loadAgents();
-    const timer = setInterval(loadAgents, 10_000);
-    return () => clearInterval(timer);
+    loadAgents(false); // initial load — show spinner
+    agentsPollRef.current = setInterval(() => loadAgents(true), 15_000); // 15s silent background poll
+    return () => clearInterval(agentsPollRef.current);
   }, [loadAgents]);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Auto-refresh screen preview every 15s (if enabled) ────────────────────
+  const captureScreenSilent = useCallback(async () => {
+    if (!connected || loadingScreen) return;
+    const QUALITY_MAP = { '720p': [40, 4], '1080p': [65, 2], '2K': [80, 1] };
+    const [q, s] = QUALITY_MAP[screenQuality] || [65, 2];
+    try {
+      const res = await captureScreen(baseUrl, settings.secretKey, q, s);
+      if (res.ok && res.data?.data) {
+        setScreenImg('data:image/jpeg;base64,' + res.data.data);
+      }
+    } catch { /* silent */ }
+  }, [connected, baseUrl, settings.secretKey, screenQuality, loadingScreen]);
 
+  useEffect(() => {
+    clearInterval(screenPollRef.current);
+    if (autoRefresh && connected) {
+      screenPollRef.current = setInterval(captureScreenSilent, 15_000);
+    }
+    return () => clearInterval(screenPollRef.current);
+  }, [autoRefresh, connected, captureScreenSilent]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
   function handleConnectAgent(e) {
     e?.preventDefault();
     const agent = agents.find(item => item.id === selectedAgentId);
     if (!agent) { addToast('Select a running PC', 'error'); return; }
     if (!agentPassword.trim()) { addToast('Enter the PC agent password', 'error'); return; }
-
-    // FIX: agent only writes "ip" — removed the non-existent "address" fallback
     const ip   = agent.ip;
     const port = Number(agent.command_port || 5000);
-
-    if (!ip) {
-      addToast('Selected PC has no IP address recorded in PocketBase', 'error');
-      return;
-    }
-
+    if (!ip) { addToast('Selected PC has no IP address', 'error'); return; }
     setFormIp(ip);
     setFormPort(port);
     setFormKey(agentPassword.trim());
@@ -156,7 +174,7 @@ export default function RemoteControlPage() {
     updateSettings({
       ip:        formIp.trim(),
       port:      Number(formPort) || 5000,
-      secretKey: formKey.trim() || 'Saini@2004',
+      secretKey: formKey.trim() || 'changeme',
     });
     addToast('Connecting to ' + formIp.trim() + '…', 'info');
   }
@@ -165,11 +183,9 @@ export default function RemoteControlPage() {
     if (!connected) { addToast('Not connected to PC', 'error'); return; }
     setActionLoading(cmdId);
     try {
-      const res = await executeQuickStep(baseUrl, settings.secretKey, {
-        type: 'SYSTEM_CMD', value: cmdId,
-      });
+      const res = await executeQuickStep(baseUrl, settings.secretKey, { type: 'SYSTEM_CMD', value: cmdId });
       if (res.ok) addToast(`${cmdId} executed`, 'success');
-      else        addToast(`Failed: ${res.error || res.data?.message || 'Unknown error'}`, 'error');
+      else        addToast(`Failed: ${res.data?.error || 'Unknown error'}`, 'error');
     } catch (e) {
       addToast(e.message, 'error');
     } finally {
@@ -178,14 +194,12 @@ export default function RemoteControlPage() {
   }
 
   async function handleKeyShortcut(key) {
-    if (!connected) { addToast('Not connected to PC', 'error'); return; }
+    if (!connected) { addToast('Not connected', 'error'); return; }
     setActionLoading(key);
     try {
-      const res = await executeQuickStep(baseUrl, settings.secretKey, {
-        type: 'KEY_PRESS', value: key,
-      });
+      const res = await executeQuickStep(baseUrl, settings.secretKey, { type: 'KEY_PRESS', value: key });
       if (res.ok) addToast(`Sent ${key}`, 'success');
-      else        addToast(`Failed: ${res.error || 'Unknown error'}`, 'error');
+      else        addToast(`Failed: ${res.data?.error || 'Unknown error'}`, 'error');
     } catch (e) {
       addToast(e.message, 'error');
     } finally {
@@ -194,11 +208,12 @@ export default function RemoteControlPage() {
   }
 
   async function handleCaptureScreen() {
-    if (!connected) { addToast('Not connected to PC', 'error'); return; }
+    if (!connected) { addToast('Not connected', 'error'); return; }
     setLoadingScreen(true);
     try {
-      const res = await captureScreen(baseUrl, settings.secretKey, 40, 3);
-      // FIX: the agent returns the base64 image in res.data.data, not res.data.image
+      const QUALITY_MAP = { '720p': [40, 4], '1080p': [65, 2], '2K': [80, 1] };
+      const [q, s] = QUALITY_MAP[screenQuality] || [65, 2];
+      const res = await captureScreen(baseUrl, settings.secretKey, q, s);
       if (res.ok && res.data?.data) {
         setScreenImg('data:image/jpeg;base64,' + res.data.data);
       } else {
@@ -211,15 +226,13 @@ export default function RemoteControlPage() {
     }
   }
 
-  // ── Admin Control shortcut ─────────────────────────────────────────────────
   if (showAdminControl && connected) {
     return <AdminControl onExit={() => setShowAdminControl(false)} />;
   }
 
-  const onlineAgents   = agents.filter(isAgentOnline);
-  const selectedAgent  = agents.find(item => item.id === selectedAgentId);
+  const onlineAgents  = agents.filter(isAgentOnline);
+  const selectedAgent = agents.find(item => item.id === selectedAgentId);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
       <div className="animate-in">
         {/* Page header */}
@@ -241,30 +254,28 @@ export default function RemoteControlPage() {
           </div>
         </div>
 
-        {/* ── Centralized PC Registry ─────────────────────────────────────────── */}
+        {/* PC Registry */}
         <div className="card rc-agent-registry">
           <div className="rc-agent-header">
             <div>
-              <h3><Globe size={18} /> Running PCs From AI Server</h3>
+              <h3><Globe size={18} /> Running PCs — AI Server Registry</h3>
               <p>
-                Agents report to PocketBase on 192.168.5.32 every 15 s.
-                Select a PC below and enter its agent password to connect.
+                Agents report every 15s · UI refreshes every 15s in background
+                {lastRefreshed && <span style={{ color: 'var(--text-tertiary)', marginLeft: 8, fontSize: '0.75rem' }}>
+                · Updated {formatLastSeen(lastRefreshed.toISOString())}
+              </span>}
               </p>
             </div>
             <button
                 className="btn btn-outline btn-sm"
-                onClick={loadAgents}
+                onClick={() => loadAgents(false)}
                 disabled={agentsLoading}
             >
               <RefreshCw size={14} /> {agentsLoading ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
 
-          {agentsError && (
-              <div className="rc-agent-error">
-                {agentsError}
-              </div>
-          )}
+          {agentsError && <div className="rc-agent-error">{agentsError}</div>}
 
           {onlineAgents.length > 0 ? (
               <form className="rc-agent-connect" onSubmit={handleConnectAgent}>
@@ -282,15 +293,11 @@ export default function RemoteControlPage() {
                       <span className="badge badge-emerald">
                         <span className="badge-dot" /> Online
                       </span>
-                            <span className="rc-agent-last">
-                        {formatLastSeen(agent.last_seen || agent.updated)}
-                      </span>
+                            <span className="rc-agent-last">{formatLastSeen(agent.last_seen || agent.updated)}</span>
                           </div>
                           <strong>{agent.pc_name || agent.hostname || 'Windows PC'}</strong>
                           <span>{agent.ip}:{agent.command_port || 5000}</span>
-                          <small>
-                            {agent.username || 'unknown user'} · stream :{agent.stream_port || 5001}
-                          </small>
+                          <small>{agent.username || 'unknown'} · stream :{agent.stream_port || 5001}</small>
                         </button>
                     );
                   })}
@@ -305,6 +312,7 @@ export default function RemoteControlPage() {
                         value={agentPassword}
                         onChange={e => setAgentPassword(e.target.value)}
                         placeholder="Enter selected PC secret key"
+                        autoComplete="current-password"
                     />
                   </div>
                   <button
@@ -328,13 +336,13 @@ export default function RemoteControlPage() {
           )}
         </div>
 
-        {/* ── Manual Connection Setup ─────────────────────────────────────────── */}
+        {/* Manual connection + Status */}
         <div className="detail-grid" style={{ marginBottom: 24 }}>
           <div className="card">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: '0.95rem' }}>
               {connected
-                  ? <Wifi    size={18} style={{ color: 'var(--accent-emerald)' }} />
-                  : <WifiOff size={18} style={{ color: 'var(--accent-rose)'    }} />}
+                  ? <Wifi size={18} style={{ color: 'var(--accent-emerald)' }} />
+                  : <WifiOff size={18} style={{ color: 'var(--accent-rose)' }} />}
               Connection Settings
             </h3>
             <form onSubmit={handleConnect}>
@@ -346,6 +354,7 @@ export default function RemoteControlPage() {
                       value={formIp}
                       onChange={e => setFormIp(e.target.value)}
                       placeholder="192.168.1.100"
+                      autoComplete="off"
                   />
                 </div>
                 <div className="input-group">
@@ -356,6 +365,8 @@ export default function RemoteControlPage() {
                       value={formPort}
                       onChange={e => setFormPort(e.target.value)}
                       placeholder="5000"
+                      min="1"
+                      max="65535"
                   />
                 </div>
                 <div className="input-group">
@@ -366,6 +377,7 @@ export default function RemoteControlPage() {
                       value={formKey}
                       onChange={e => setFormKey(e.target.value)}
                       placeholder="Secret key"
+                      autoComplete="current-password"
                   />
                 </div>
                 <div className="input-group" style={{ justifyContent: 'flex-end' }}>
@@ -379,7 +391,6 @@ export default function RemoteControlPage() {
             </form>
           </div>
 
-          {/* Status Card */}
           <div className="card">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: '0.95rem' }}>
               <Monitor size={18} /> PC Status
@@ -403,11 +414,7 @@ export default function RemoteControlPage() {
               </div>
               <div className="rc-status-item">
                 <span className="rc-status-label">Actions</span>
-                <button
-                    className="btn btn-outline btn-sm"
-                    onClick={doPing}
-                    disabled={pinging || !settings.ip}
-                >
+                <button className="btn btn-outline btn-sm" onClick={doPing} disabled={pinging || !settings.ip}>
                   <RefreshCw size={14} /> Ping
                 </button>
               </div>
@@ -415,9 +422,10 @@ export default function RemoteControlPage() {
           </div>
         </div>
 
-        {/* ── Quick Actions (only when connected) ────────────────────────────── */}
+        {/* Connected features */}
         {connected && (
             <>
+              {/* Quick Actions */}
               <h2 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Zap size={18} style={{ color: 'var(--accent-amber)' }} /> Quick Actions
               </h2>
@@ -465,10 +473,35 @@ export default function RemoteControlPage() {
                 <Image size={18} style={{ color: 'var(--accent-purple)' }} /> Screen Preview
               </h2>
               <div className="card" style={{ marginBottom: 24 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
-                Capture a screenshot from the remote PC
-              </span>
+                {/* Controls row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {/* Quality selector */}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {['720p', '1080p', '2K'].map(q => (
+                          <button
+                              key={q}
+                              className={`q-btn ${screenQuality === q ? 'q-btn-active' : ''}`}
+                              onClick={() => setScreenQuality(q)}
+                          >{q}</button>
+                      ))}
+                    </div>
+                    {/* Auto-refresh toggle */}
+                    <button
+                        className={`q-btn ${autoRefresh ? 'q-btn-active' : ''}`}
+                        onClick={() => setAutoRefresh(v => !v)}
+                        title="Auto-refresh every 15s"
+                    >
+                      <RefreshCw size={12} /> {autoRefresh ? 'Live (15s)' : 'Auto Refresh'}
+                    </button>
+                    {/* Zoom controls */}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <button className="q-btn" onClick={() => setScreenZoom(z => Math.max(0.5, z - 0.25))} title="Zoom Out"><ZoomOut size={12} /></button>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', minWidth: 36, textAlign: 'center' }}>{Math.round(screenZoom * 100)}%</span>
+                      <button className="q-btn" onClick={() => setScreenZoom(z => Math.min(4, z + 0.25))} title="Zoom In"><ZoomIn size={12} /></button>
+                      <button className="q-btn" onClick={() => setScreenZoom(1)} title="Reset Zoom"><ResetIcon size={12} /></button>
+                    </div>
+                  </div>
                   <button
                       className="btn btn-primary btn-sm"
                       onClick={handleCaptureScreen}
@@ -476,35 +509,48 @@ export default function RemoteControlPage() {
                   >
                     {loadingScreen
                         ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Capturing…</>
-                        : <><Camera size={14} /> Capture</>}
+                        : <><Camera size={14} /> Capture {screenQuality}</>}
                   </button>
                 </div>
+
+                {/* Screen image box */}
                 {screenImg ? (
-                    <div className="rc-screen-preview">
-                      <img src={screenImg} alt="Remote Screen" />
+                    <div
+                        className="rc-screen-preview"
+                        style={{ overflow: 'auto', maxHeight: 600, background: '#000', borderRadius: 8, border: '1px solid var(--border-subtle)' }}
+                    >
+                      <img
+                          src={screenImg}
+                          alt="Remote Screen"
+                          style={{
+                            display: 'block',
+                            width: `${screenZoom * 100}%`,
+                            imageRendering: screenZoom > 1 ? 'pixelated' : 'auto',
+                            cursor: 'crosshair',
+                          }}
+                      />
                     </div>
                 ) : (
                     <div className="rc-screen-empty">
                       <Monitor size={48} style={{ opacity: 0.3 }} />
                       <p>Click "Capture" to preview the remote desktop</p>
+                      <small style={{ color: 'var(--text-tertiary)' }}>Supports 720p, 1080p, 2K quality</small>
                     </div>
                 )}
               </div>
             </>
         )}
 
-        {/* Unable to Connect banner */}
+        {/* Error / no config banners */}
         {!connected && settings.ip && (
             <div className="card" style={{ textAlign: 'center', padding: 48 }}>
               <WifiOff size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
               <h3 style={{ marginBottom: 8 }}>Unable to Connect</h3>
               <p style={{ color: 'var(--text-tertiary)', maxWidth: 400, margin: '0 auto' }}>
-                {connectionError || 'Make sure the IT Connect Agent is running on the target PC and the IP address is correct.'}
+                {connectionError || 'Ensure the IT Connect Agent is running on the target PC and the IP is correct.'}
               </p>
             </div>
         )}
-
-        {/* No PC configured banner */}
         {!settings.ip && (
             <div className="card" style={{ textAlign: 'center', padding: 48 }}>
               <Monitor size={48} style={{ opacity: 0.3, marginBottom: 16 }} />

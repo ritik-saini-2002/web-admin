@@ -1,0 +1,328 @@
+/* ═══════════════════════════════════════════════════════════════════
+   AI control + ADMIN CONTROL — Complete CSS
+   Append to index.css or import separately
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Page layout ──────────────────────────────────────────────────── */
+.ai-control-page { display: flex; flex-direction: column; gap: 16px; }
+
+.ai-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 14px;
+    align-items: start;
+}
+@media (max-width: 960px)  { .ai-grid { grid-template-columns: 1fr; } }
+
+.ai-left, .ai-right { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Card label ───────────────────────────────────────────────────── */
+.card-label {
+    font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-tertiary); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px;
+}
+
+/* ── Status pills ─────────────────────────────────────────────────── */
+.ai-status-pill {
+    display: flex; align-items: center; gap: 5px;
+    border-radius: 20px; padding: 4px 10px;
+    font-size: 0.72rem; font-weight: 500; border: 1px solid transparent;
+}
+.ai-pill-green  { background: rgba(52,211,153,.08);  border-color: rgba(52,211,153,.22); color: var(--accent-emerald,#34d399); }
+.ai-pill-blue   { background: rgba(96,165,250,.08);  border-color: rgba(96,165,250,.22); color: var(--accent-blue,#60a5fa); }
+.ai-pill-red    { background: rgba(248,113,113,.08); border-color: rgba(248,113,113,.22); color: var(--accent-rose,#f87171); }
+.ai-pill-dim    { background: var(--bg-deep,rgba(0,0,0,.1)); border-color: var(--border-subtle); color: var(--text-tertiary); }
+
+/* ── Screen card ──────────────────────────────────────────────────── */
+.ai-screen-frame {
+    background: #000; border-radius: 8px; border: 1px solid var(--border-subtle);
+    aspect-ratio: 16/9; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 10px;
+}
+.ai-screen-placeholder {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    color: var(--text-tertiary); font-size: 0.78rem; text-align: center; padding: 16px;
+}
+.ai-screen-overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,.55);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px; color: #fff; font-size: 0.82rem;
+    backdrop-filter: blur(2px);
+}
+.ai-screen-controls {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+
+/* ── Q buttons ────────────────────────────────────────────────────── */
+.q-btn {
+    background: var(--bg-deep,rgba(0,0,0,.15));
+    border: 1px solid var(--border-subtle); border-radius: 6px;
+    padding: 4px 10px; font-size: 0.72rem; font-weight: 500;
+    color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
+}
+.q-btn:hover { border-color: var(--accent-blue,#60a5fa); color: var(--accent-blue,#60a5fa); }
+.q-btn-active { border-color: var(--accent-purple,#a78bfa) !important; color: var(--accent-purple,#a78bfa) !important; }
+.q-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Quick actions grid ────────────────────────────────────────────── */
+.ai-quick-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+@media (max-width: 480px) { .ai-quick-grid { grid-template-columns: repeat(2,1fr); } }
+
+.ai-qa-btn {
+    background: var(--bg-deep,rgba(0,0,0,.1));
+    border: 1px solid var(--border-subtle); border-radius: 8px;
+    padding: 10px 6px 8px; text-align: center; cursor: pointer;
+    transition: all 0.15s; color: var(--text-tertiary);
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+}
+.ai-qa-btn span { font-size: 0.68rem; font-weight: 500; }
+.ai-qa-btn:hover { border-color: var(--accent-blue,#60a5fa); color: var(--accent-blue,#60a5fa); background: rgba(96,165,250,.06); }
+.ai-qa-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Chat card ────────────────────────────────────────────────────── */
+.ai-chat-card { display: flex; flex-direction: column; }
+.ai-chat-history {
+    flex: 1; min-height: 200px; max-height: 320px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; padding-right: 4px;
+}
+.ai-chat-history::-webkit-scrollbar { width: 4px; }
+.ai-chat-history::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
+
+.ai-msg {
+    padding: 8px 11px; border-radius: 8px; font-size: 0.82rem;
+    line-height: 1.55; max-width: 92%; word-break: break-word;
+}
+.ai-msg-ai     { background: rgba(167,139,250,.08); border: 1px solid rgba(167,139,250,.18); color: var(--text-primary); align-self: flex-start; }
+.ai-msg-user   { background: rgba(96,165,250,.08);  border: 1px solid rgba(96,165,250,.18);  color: var(--text-primary); align-self: flex-end; }
+.ai-msg-system {
+    background: rgba(251,191,36,.05); border: 1px solid rgba(251,191,36,.15);
+    color: var(--accent-amber,#fbbf24); font-family: var(--font-family,monospace);
+    font-size: 0.72rem; align-self: stretch;
+}
+.ai-thinking { display: flex; align-items: center; gap: 6px; opacity: 0.7; }
+
+.ai-chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+.ai-chat-input {
+    flex: 1; background: var(--bg-deep,rgba(0,0,0,.1));
+    border: 1px solid var(--border-subtle); border-radius: 8px;
+    padding: 8px 11px; color: var(--text-primary); font-family: inherit;
+    font-size: 0.82rem; outline: none; resize: none; line-height: 1.5;
+    transition: border-color 0.15s;
+}
+.ai-chat-input:focus { border-color: var(--accent-purple,#a78bfa); }
+.ai-chat-input::placeholder { color: var(--text-tertiary); }
+.ai-chat-input:disabled { opacity: 0.6; }
+
+/* ── Model dropdown ───────────────────────────────────────────────── */
+.ai-model-dropdown {
+    position: absolute; top: calc(100% + 4px); right: 0;
+    background: var(--bg-surface,var(--bg-active)); border: 1px solid var(--border-subtle);
+    border-radius: 8px; min-width: 180px; z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,.2); overflow: hidden;
+}
+.ai-model-item { padding: 8px 12px; font-size: 0.78rem; color: var(--text-secondary); cursor: pointer; transition: background 0.12s; font-family: var(--font-family,monospace); }
+.ai-model-item:hover { background: var(--bg-deep,rgba(0,0,0,.1)); color: var(--text-primary); }
+.ai-model-item.active { color: var(--accent-purple,#a78bfa); font-weight: 600; }
+
+/* ── Plan card ────────────────────────────────────────────────────── */
+.ai-plan-steps { display: flex; flex-direction: column; gap: 5px; }
+.ai-plan-step {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 9px; background: var(--bg-deep,rgba(0,0,0,.08));
+    border: 1px solid var(--border-subtle); border-radius: 6px;
+}
+.ai-step-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 0.65rem; font-weight: 600; padding: 2px 6px;
+    border-radius: 4px; font-family: var(--font-family,monospace);
+    flex-shrink: 0; border: 1px solid transparent;
+}
+.ai-badge-ok   { background: rgba(52,211,153,.1);  color: var(--accent-emerald,#34d399); border-color: rgba(52,211,153,.2); }
+.ai-badge-run  { background: rgba(96,165,250,.1);  color: var(--accent-blue,#60a5fa);   border-color: rgba(96,165,250,.2); }
+.ai-badge-wait { background: var(--bg-deep,rgba(0,0,0,.1)); color: var(--text-tertiary); }
+.ai-badge-err  { background: rgba(248,113,113,.1); color: var(--accent-rose,#f87171);   border-color: rgba(248,113,113,.2); }
+.ai-step-text  { flex: 1; font-size: 0.75rem; font-family: var(--font-family,monospace); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-step-time  { font-size: 0.68rem; color: var(--text-tertiary); flex-shrink: 0; }
+
+/* ── Log card ─────────────────────────────────────────────────────── */
+.ai-log-lines {
+    font-family: var(--font-family,monospace); font-size: 0.72rem;
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 160px; overflow-y: auto;
+}
+.ai-log-lines::-webkit-scrollbar { width: 3px; }
+.ai-log-lines::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+.ai-log-line { display: flex; gap: 8px; }
+.ai-log-ts   { color: var(--text-tertiary); flex-shrink: 0; }
+.ai-log-ok   { color: var(--accent-emerald,#34d399); }
+.ai-log-info { color: var(--accent-blue,#60a5fa); }
+.ai-log-warn { color: var(--accent-amber,#fbbf24); }
+.ai-log-err  { color: var(--accent-rose,#f87171); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ADMIN CONTROL — Full-takeover screen-sharing UI
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Overlay / prompt ──────────────────────────────────────────────── */
+.ac-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.72);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; padding: 16px;
+}
+.ac-prompt {
+    background: var(--bg-active); border: 1px solid var(--border-subtle);
+    border-radius: 16px; padding: 36px; max-width: 520px; width: 100%;
+    box-shadow: 0 24px 64px rgba(0,0,0,.45);
+    max-height: 90vh; overflow-y: auto;
+}
+.ac-prompt-icon {
+    color: var(--accent-emerald,#34d399); margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: center;
+}
+.ac-prompt h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; text-align: center; }
+.ac-prompt-desc { font-size: 0.85rem; color: var(--text-secondary); text-align: center; margin-bottom: 20px; line-height: 1.55; }
+
+/* Quality selector (prompt) */
+.ac-quality-select { margin-bottom: 18px; }
+.ac-quality-label  { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--text-tertiary); display: block; margin-bottom: 8px; }
+.ac-quality-btns   { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.ac-quality-btn {
+    border: 1px solid var(--border-subtle); border-radius: 8px;
+    padding: 10px 8px; background: var(--bg-deep,rgba(0,0,0,.1));
+    cursor: pointer; font-size: 0.82rem; font-weight: 600;
+    color: var(--text-secondary); transition: all 0.15s;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.ac-quality-btn:hover { border-color: var(--accent-blue,#60a5fa); color: var(--accent-blue,#60a5fa); }
+.ac-quality-btn.active { border-color: var(--accent-purple,#a78bfa); color: var(--accent-purple,#a78bfa); background: rgba(167,139,250,.08); }
+.ac-quality-sub { font-size: 0.62rem; font-weight: 400; color: var(--text-tertiary); }
+
+.ac-prompt-info { margin-bottom: 18px; display: flex; flex-direction: column; gap: 8px; }
+.ac-info-row { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--text-secondary); }
+
+.ac-prompt-warning {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.2);
+    border-radius: 8px; font-size: 0.8rem; color: var(--accent-amber,#fbbf24);
+    margin-bottom: 20px;
+}
+.ac-prompt-warning kbd {
+    background: var(--bg-deep,rgba(0,0,0,.2)); padding: 2px 6px;
+    border-radius: 4px; font-size: 0.78rem; border: 1px solid var(--border-subtle);
+}
+.ac-prompt-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.ac-start-btn { display: flex; align-items: center; gap: 8px; }
+
+/* ── Active control container ──────────────────────────────────────── */
+.ac-container {
+    position: fixed; inset: 0; background: #000; z-index: 9999;
+    display: flex; flex-direction: column; outline: none;
+    user-select: none; -webkit-user-select: none;
+}
+.ac-fullscreen { background: #000; }
+
+/* ── Status bar ────────────────────────────────────────────────────── */
+.ac-statusbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; background: rgba(0,0,0,.88);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    flex-shrink: 0; flex-wrap: wrap; gap: 6px; min-height: 40px;
+}
+.ac-statusbar-left, .ac-statusbar-center, .ac-statusbar-right {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.ac-status-label { font-size: 0.72rem; font-weight: 700; letter-spacing: .06em; color: var(--accent-emerald,#34d399); }
+.ac-status-dot   { width: 6px; height: 6px; border-radius: 50%; }
+.ac-status-dot.online { background: var(--accent-emerald,#34d399); box-shadow: 0 0 6px var(--accent-emerald,#34d399); }
+.ac-status-detail { font-size: 0.68rem; color: rgba(255,255,255,.45); font-family: monospace; }
+.ac-stat { display: flex; align-items: center; gap: 4px; font-size: 0.68rem; color: rgba(255,255,255,.5); }
+
+/* Quality buttons in statusbar */
+.ac-inline-quality { display: flex; gap: 2px; }
+.ac-q-btn {
+    padding: 2px 8px; font-size: 0.65rem; border-radius: 4px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+    color: rgba(255,255,255,.55); cursor: pointer; transition: all 0.15s;
+}
+.ac-q-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+.ac-q-btn.active { background: rgba(167,139,250,.2); border-color: rgba(167,139,250,.5); color: var(--accent-purple,#a78bfa); }
+
+/* Zoom display */
+.ac-zoom-display { font-size: 0.68rem; color: rgba(255,255,255,.5); min-width: 36px; text-align: center; font-family: monospace; }
+
+/* Bar buttons */
+.ac-bar-btn {
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 6px; padding: 4px 8px; font-size: 0.72rem; font-weight: 500;
+    color: rgba(255,255,255,.7); cursor: pointer; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 4px;
+}
+.ac-bar-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+.ac-bar-btn.danger { border-color: rgba(248,113,113,.35); color: var(--accent-rose,#f87171); }
+.ac-bar-btn.danger:hover { background: rgba(248,113,113,.15); }
+
+/* ── Screen area ───────────────────────────────────────────────────── */
+.ac-screen {
+    flex: 1; overflow: hidden; position: relative;
+    display: flex; align-items: center; justify-content: center;
+}
+.ac-screen-inner {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%;
+}
+.ac-screen-img {
+    max-width: 100%; max-height: 100%; width: 100%; height: 100%;
+    object-fit: contain; display: block;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+.ac-screen-loading {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; color: rgba(255,255,255,.6);
+    background: rgba(0,0,0,.7);
+}
+
+/* ── Overlays ──────────────────────────────────────────────────────── */
+.ac-lock-hint {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; color: rgba(255,255,255,.75);
+    font-size: 0.85rem; background: rgba(0,0,0,.35);
+    backdrop-filter: blur(2px); cursor: pointer; pointer-events: all;
+}
+.ac-esc-indicator {
+    position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+    background: rgba(251,191,36,.9); color: #000; padding: 6px 16px;
+    border-radius: 20px; font-size: 0.8rem; font-weight: 700;
+    animation: pulse 0.3s ease;
+}
+.ac-zoom-indicator {
+    position: absolute; bottom: 16px; right: 16px;
+    background: rgba(0,0,0,.65); color: rgba(255,255,255,.75);
+    padding: 4px 10px; border-radius: 8px; font-size: 0.72rem;
+    font-family: monospace; pointer-events: none;
+}
+
+@keyframes pulse {
+    0%   { transform: translateX(-50%) scale(0.9); }
+    60%  { transform: translateX(-50%) scale(1.1); }
+    100% { transform: translateX(-50%) scale(1); }
+}
+
+/* ── Responsive statusbar ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .ac-statusbar { justify-content: flex-start; }
+    .ac-statusbar-center { display: none; }
+    .ac-inline-quality { display: none; }
+    .ac-zoom-display { display: none; }
+    .ac-bar-btn span { display: none; } /* icon-only on mobile */
+}
+@media (max-width: 480px) {
+    .ac-statusbar-left .ac-status-detail { display: none; }
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }

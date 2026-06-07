@@ -1,37 +1,35 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getScreenSize, ping } from '../api/pcControlApi';
 
 const PcControlContext = createContext(null);
 
-const STORAGE_KEY = 'itc_pc_control';
-const DEFAULT_SECRET_KEY = 'Ritik@2002';
+const STORAGE_KEY              = 'itc_pc_control';
+const DEFAULT_SECRET_KEY       = 'Ritik@2002';
 const PREVIOUS_DEFAULT_SECRET_KEY = 'Saini@2004';
 
 function loadSettings() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      const settings = JSON.parse(saved);
-      if (settings.secretKey === PREVIOUS_DEFAULT_SECRET_KEY) {
-        return { ...settings, secretKey: DEFAULT_SECRET_KEY };
+      const s = JSON.parse(saved);
+      if (s.secretKey === PREVIOUS_DEFAULT_SECRET_KEY) {
+        return { ...s, secretKey: DEFAULT_SECRET_KEY };
       }
-      return settings;
+      return s;
     }
-  } catch {
-    // Ignore invalid local storage and fall back to defaults.
-  }
+  } catch { /* fall */ }
   return { ip: '', port: 5000, secretKey: DEFAULT_SECRET_KEY };
 }
 
-function saveSettings(settings) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+function saveSettings(s) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
 
 export function PcControlProvider({ children }) {
-  const [settings, setSettings] = useState(loadSettings);
-  const [connected, setConnected] = useState(false);
-  const [pcName, setPcName] = useState('');
-  const [pinging, setPinging] = useState(false);
+  const [settings, setSettings]         = useState(loadSettings);
+  const [connected, setConnected]       = useState(false);
+  const [pcName, setPcName]             = useState('');
+  const [pinging, setPinging]           = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const pingTimerRef = useRef(null);
 
@@ -68,9 +66,9 @@ export function PcControlProvider({ children }) {
         setConnected(false);
         setPcName('');
         setConnectionError(
-          accessCheck.status === 401
-            ? 'PC is reachable, but the secret key is rejected.'
-            : accessCheck.error || accessCheck.data?.error || 'PC control endpoint is not reachable from this server.',
+            accessCheck.status === 401
+                ? 'PC is reachable, but the secret key is rejected.'
+                : accessCheck.error || accessCheck.data?.error || 'PC control endpoint is not reachable from this server.',
         );
         setPinging(false);
         return false;
@@ -108,14 +106,30 @@ export function PcControlProvider({ children }) {
     if (pingTimerRef.current) clearInterval(pingTimerRef.current);
   }, []);
 
+  /**
+   * selectedPc — a rich PC object derived from current settings + connection
+   * state, stable across renders (useMemo). Used by Aicontrol.jsx.
+   */
+  const selectedPc = useMemo(() => {
+    if (!settings.ip || !connected) return null;
+    return {
+      ip:           settings.ip,
+      command_port: settings.port || 5000,
+      stream_port:  5001,
+      _key:         settings.secretKey,
+      pc_name:      pcName || 'Connected PC',
+    };
+  }, [settings.ip, settings.port, settings.secretKey, connected, pcName]);
+
   return (
-    <PcControlContext.Provider value={{
-      settings, updateSettings,
-      baseUrl, connected, pcName, pinging, connectionError,
-      doPing, disconnect,
-    }}>
-      {children}
-    </PcControlContext.Provider>
+      <PcControlContext.Provider value={{
+        settings, updateSettings,
+        baseUrl, connected, pcName, pinging, connectionError,
+        doPing, disconnect,
+        selectedPc,        // ← consumed by Aicontrol
+      }}>
+        {children}
+      </PcControlContext.Provider>
   );
 }
 
