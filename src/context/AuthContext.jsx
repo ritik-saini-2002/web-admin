@@ -3,7 +3,9 @@ import { authenticateAdmin, getUserRecord } from '../api/pocketbase';
 
 const AuthContext = createContext(null);
 
-const SESSION_REFRESH_INTERVAL =9660_000; // 60 seconds
+// How often we quietly re-sync role/permissions/profile data in the background.
+// This ONLY refreshes data — it never logs the user out on its own.
+const SESSION_REFRESH_INTERVAL = 5 * 60_000; // 5 minutes
 
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(() => {
@@ -52,6 +54,9 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // The ONLY way a session ends now is an explicit, user-initiated logout
+  // (e.g. clicking "Sign Out" in the Topbar/Sidebar). Nothing in this file
+  // calls this automatically anymore.
   const logout = useCallback(() => {
     localStorage.removeItem('itc_auth');
     setAuth(null);
@@ -59,8 +64,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
-   * Refresh session from database — fetches latest user record and updates
-   * permissions, profile, role, etc. without requiring re-login.
+   * Refresh session data from the database — fetches the latest user record
+   * and updates permissions, profile, role, etc. without requiring re-login.
+   *
+   * NOTE: This never force-logs-out the user, even if the record shows
+   * isActive === false or the request fails (expired token, network error,
+   * server hiccup, etc). It just skips the update and tries again next tick.
+   * The user stays signed in until they explicitly choose to log out.
    */
   const refreshSession = useCallback(async () => {
     const currentAuth = authRef.current;
@@ -68,12 +78,6 @@ export function AuthProvider({ children }) {
     try {
       const user = await getUserRecord(currentAuth.userId, currentAuth.token);
       if (!user) return;
-
-      // Check if disabled
-      if (user.isActive === false) {
-        logout();
-        return;
-      }
 
       let perms = [];
       try { perms = JSON.parse(user.permissions || '[]'); } catch { perms = []; }
@@ -89,13 +93,18 @@ export function AuthProvider({ children }) {
         profile: user.profile || currentAuth.profile || '{}',
         workStats: user.workStats || currentAuth.workStats || '{}',
         issues: user.issues || currentAuth.issues || '{}',
+        // isActive is tracked for display purposes only — it no longer
+        // triggers an automatic logout.
+        isActive: user.isActive !== false,
       };
       localStorage.setItem('itc_auth', JSON.stringify(updated));
       setAuth(updated);
     } catch (e) {
-      console.warn('Session refresh failed:', e.message);
+      // Swallow errors on purpose: a failed background refresh (expired
+      // token, offline, server error, etc) should never kick the user out.
+      console.warn('Session refresh failed (session kept alive):', e.message);
     }
-  }, [logout]);
+  }, []);
 
   /**
    * Update the user's profile data and refresh session.
@@ -108,16 +117,16 @@ export function AuthProvider({ children }) {
     setAuth(updated);
   }, [auth]);
 
-  // Auto-refresh session every 60s for non-superusers
+  // Background data sync every 5 min for non-superusers.
+  // Purely informational — see refreshSession() above for why it can never
+  // log anyone out.
   useEffect(() => {
     const authUserId = auth?.userId;
     const authIsSuperuser = auth?.isSuperuser;
     if (!authUserId || authIsSuperuser) return;
 
-    const initialRefresh = setTimeout(refreshSession, 555000);
     refreshTimer.current = setInterval(refreshSession, SESSION_REFRESH_INTERVAL);
     return () => {
-      clearTimeout(initialRefresh);
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
   }, [auth?.userId, auth?.isSuperuser, refreshSession]);
