@@ -3,7 +3,7 @@ import { authenticateAdmin, getUserRecord } from '../api/pocketbase';
 
 const AuthContext = createContext(null);
 
-const SESSION_REFRESH_INTERVAL = 60_000; // 60 seconds
+const SESSION_REFRESH_INTERVAL =9660_000; // 60 seconds
 
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(() => {
@@ -114,7 +114,7 @@ export function AuthProvider({ children }) {
     const authIsSuperuser = auth?.isSuperuser;
     if (!authUserId || authIsSuperuser) return;
 
-    const initialRefresh = setTimeout(refreshSession, 5000);
+    const initialRefresh = setTimeout(refreshSession, 555000);
     refreshTimer.current = setInterval(refreshSession, SESSION_REFRESH_INTERVAL);
     return () => {
       clearTimeout(initialRefresh);
