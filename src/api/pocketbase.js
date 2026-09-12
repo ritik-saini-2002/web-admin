@@ -31,12 +31,16 @@ let adminToken            = '';
 let adminTokenFetchedAt   = 0;
 let serviceToken          = '';
 let serviceTokenFetchedAt = 0;
-const ADMIN_TOKEN_TTL   = 10 * 60 * 1000; // 10 min
-const SERVICE_TOKEN_TTL = 10 * 60 * 1000; // 10 min
+const ADMIN_TOKEN_TTL   = 600 * 60 * 1000; // 10 min
+const SERVICE_TOKEN_TTL = 600 * 60 * 1000; // 10 min
 
 // ── Auth expiry event ──────────────────────────────────────────────────────
-// Fired whenever ANY authenticated request gets a 401 or 403 back.
-// AuthContext listens for this and calls logout() automatically.
+// Fired ONLY when a request comes back 401 (the token itself is invalid or
+// expired). A 403 means the token is still valid but the account isn't
+// allowed to do that specific thing (e.g. a non-superuser hitting a
+// superuser-only PocketBase endpoint like /api/collections) — that is a
+// per-request permission problem, not a broken session, so it must NOT land
+// here or it will wipe the shared token for the whole app.
 // Debounced so rapid parallel failures don't fire it dozens of times.
 let _authExpiredDebounce = null;
 export function fireAuthExpired(reason = 'token_expired') {
@@ -65,15 +69,23 @@ async function request(method, url, token = '', body = null, timeout = 8000) {
     let json;
     try { json = JSON.parse(text); } catch { json = text; }
 
-    // ── Auto-logout on 401 (expired/invalid token) or 403 (revoked access) ──
+    // ── Auto-logout on 401 ONLY (expired/invalid token) ──────────────────
     // Skip auth endpoints themselves — a wrong password on login should NOT
     // trigger a logout event (that would be confusing UX).
+    //
+    // 403 is deliberately excluded: it means "valid token, insufficient
+    // privileges for this one call" (e.g. a non-superuser calling the
+    // superuser-only /api/collections route). Treating that as a global
+    // session expiry used to wipe the shared adminToken cache and break
+    // every other page's data loading until a full logout/login — that was
+    // the cause of the "disconnects when I open Database Manager" bug.
+    // Callers that care about 403 specifically can check res.status themselves.
     const isAuthEndpoint =
         url.includes('/auth-with-password') ||
         url.includes('/api/admins/auth');
 
-    if (!isAuthEndpoint && (res.status === 401 || res.status === 403)) {
-      fireAuthExpired(res.status === 401 ? 'token_expired' : 'access_revoked');
+    if (!isAuthEndpoint && res.status === 401) {
+      fireAuthExpired('token_expired');
     }
 
     return { ok: res.ok, status: res.status, data: json };
@@ -163,15 +175,46 @@ export async function authenticateAdmin(email, password) {
 }
 
 /**
+ * Read the token AuthContext already persisted to localStorage on login.
+ * Used as a fallback so a page refresh — which wipes the in-memory
+ * adminToken cache below, since it's just a JS module variable — doesn't
+ * force every page's data calls to fail. The person's session is still
+ * perfectly valid; we just lost the in-memory copy of it.
+ */
+function getStoredSessionToken() {
+  try {
+    const raw = localStorage.getItem('itc_auth');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    return parsed?.token || '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Get a cached admin token for background API calls.
- * Uses .env credentials as fallback if no user has logged in.
+ * Falls back to the persisted session token (survives page refresh), then
+ * to .env credentials, if no valid token is cached in memory.
  */
 export async function getAdminToken() {
   const now = Date.now();
   if (adminToken && (now - adminTokenFetchedAt) < ADMIN_TOKEN_TTL) return adminToken;
 
+  // Reuse the token from localStorage before giving up — this is what makes
+  // a page refresh not behave like a logout.
+  const stored = getStoredSessionToken();
+  if (stored) {
+    adminToken = stored;
+    adminTokenFetchedAt = now;
+    return adminToken;
+  }
+
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-    // No .env fallback — token has expired, trigger logout
+    // No stored session and no .env fallback — there's genuinely no valid
+    // token available. This does NOT log the user out by itself; it just
+    // surfaces an error on this one request. See fireAuthExpired() above —
+    // nothing auto-triggers logout() from it.
     fireAuthExpired('token_expired');
     throw new Error('Session expired. Please log in again.');
   }
@@ -201,6 +244,62 @@ export async function getAdminToken() {
 }
 
 // ── Service Account Token ─────────────────────────────────────────────────
+
+/**
+ * Some PocketBase endpoints (schema listing at /api/collections, etc.) are
+ * hard-coded to superuser-only at the PocketBase engine level — this is NOT
+ * governed by your app's own roles/permissions. A "users" collection account
+ * with role = 'System_Administrator' set via the Roles page is a perfectly
+ * valid app-level admin, but it is not a PocketBase superuser, and never
+ * will be no matter what permissions you grant it.
+ *
+ * This token is always fetched with dedicated superuser credentials from
+ * .env, completely independent of whichever human is currently logged into
+ * the app — same pattern as getServiceToken() below, just for a different
+ * purpose. Pages should gate visibility on the app's own permission (e.g.
+ * 'database_manager'), and use THIS token (not getAdminToken()) for the
+ * specific calls that require genuine superuser rights.
+ */
+let superuserToken          = '';
+let superuserTokenFetchedAt = 0;
+const SUPERUSER_TOKEN_TTL = 600 * 60 * 1000; // 10 min
+
+export async function getSuperuserToken() {
+  const now = Date.now();
+  if (superuserToken && (now - superuserTokenFetchedAt) < SUPERUSER_TOKEN_TTL) return superuserToken;
+
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    throw new Error(
+        'This feature requires PocketBase superuser access. Set VITE_PB_ADMIN_EMAIL ' +
+        'and VITE_PB_ADMIN_PASSWORD in .env to a real PocketBase superuser account ' +
+        '(one that exists in the built-in "_superusers" collection, not the "users" ' +
+        'collection) and rebuild — app roles/permissions can\'t substitute for this.',
+    );
+  }
+
+  const endpoints = [
+    `${BASE_URL}/api/collections/_superusers/auth-with-password`,
+    `${BASE_URL}/api/admins/auth-with-password`,
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await request(
+          'POST', url, '',
+          { identity: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+          AUTH_REQUEST_TIMEOUT,
+      );
+      if (res.ok && res.data?.token) {
+        superuserToken = res.data.token;
+        superuserTokenFetchedAt = now;
+        return superuserToken;
+      }
+    } catch (e) {
+      console.warn('Superuser auth failed:', url, e);
+    }
+  }
+  throw new Error('Failed to obtain superuser token. Check VITE_PB_ADMIN_EMAIL and VITE_PB_ADMIN_PASSWORD in .env are a valid superuser account.');
+}
 
 export async function getServiceToken() {
   const now = Date.now();
@@ -337,7 +436,7 @@ export async function deleteRecord(collection, id) {
 // ── Collections (schemas) ──────────────────────────────────────────────────
 
 export async function listCollections() {
-  const token = await getAdminToken();
+  const token = await getSuperuserToken();
   const res   = await request('GET', `${BASE_URL}/api/collections?perPage=200`, token);
   if (!res.ok) throw new Error(`listCollections HTTP ${res.status}`);
   return res.data;
@@ -373,7 +472,7 @@ export async function upsertPcAgent(recordId, payload) {
 }
 
 export async function getCollection(nameOrId) {
-  const token = await getAdminToken();
+  const token = await getSuperuserToken();
   const res   = await request('GET', `${BASE_URL}/api/collections/${nameOrId}`, token);
   if (!res.ok) throw new Error(`getCollection HTTP ${res.status}`);
   return res.data;

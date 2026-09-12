@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Database, RefreshCw, ChevronRight, Table2, Code2 } from 'lucide-react';
+import { Database, RefreshCw, ChevronRight, Table2, Code2, ShieldAlert } from 'lucide-react';
 import { listCollections, listRecords } from '../api/pocketbase';
 import { useToast } from '../context/ToastContext';
 import { formatDate } from '../utils/helpers';
@@ -13,10 +13,12 @@ export default function DatabaseManagerPage() {
   const [recordPage, setRecordPage] = useState(1);
   const [recordTotal, setRecordTotal] = useState(0);
   const [viewMode, setViewMode] = useState('table'); // table | json
+  const [superuserConfigError, setSuperuserConfigError] = useState('');
   const { addToast } = useToast();
 
   const loadCollections = useCallback(async () => {
     setLoading(true);
+    setSuperuserConfigError('');
     try {
       const res = await listCollections();
       const cols = (res.items || res || []).filter(c => c.name && !c.name.startsWith('_'));
@@ -31,13 +33,42 @@ export default function DatabaseManagerPage() {
       }));
       setCollections(withCounts);
     } catch (e) {
-      addToast('Failed to load collections: ' + e.message, 'error');
+      // listCollections() uses a dedicated superuser service token (see
+      // getSuperuserToken() in pocketbase.js), since PocketBase's schema
+      // endpoint is superuser-only regardless of the app's own permissions.
+      // If VITE_PB_ADMIN_EMAIL/VITE_PB_ADMIN_PASSWORD aren't configured with
+      // a real superuser account, surface that clearly instead of a generic
+      // error — this is a deployment config issue, not something the person
+      // viewing the page can fix themselves.
+      if (e.message?.includes('requires PocketBase superuser access') || e.message?.includes('Failed to obtain superuser token')) {
+        setSuperuserConfigError(e.message);
+      } else {
+        addToast('Failed to load collections: ' + e.message, 'error');
+      }
     } finally {
       setLoading(false);
     }
   }, [addToast]);
 
   useEffect(() => { loadCollections(); }, [loadCollections]);
+
+  if (!loading && superuserConfigError) {
+    return (
+      <div className="animate-in">
+        <div className="page-header">
+          <div>
+            <h1>Database Manager</h1>
+            <p>Browse PocketBase collections and records</p>
+          </div>
+        </div>
+        <div className="card empty-state" style={{ padding: 40 }}>
+          <ShieldAlert size={48} />
+          <h3>Superuser service account not configured</h3>
+          <p style={{ maxWidth: 480, margin: '0 auto' }}>{superuserConfigError}</p>
+        </div>
+      </div>
+    );
+  }
 
   async function selectCollection(col) {
     setSelectedCol(col);
@@ -73,7 +104,7 @@ export default function DatabaseManagerPage() {
         <button className="btn btn-outline" onClick={loadCollections}><RefreshCw size={16} /> Refresh</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, minHeight: 500 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 20, minHeight: 500 }}>
         {/* Collections list */}
         <div className="card" style={{ padding: 0, alignSelf: 'flex-start', maxHeight: '80vh', overflowY: 'auto' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)' }}>
