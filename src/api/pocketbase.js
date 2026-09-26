@@ -25,6 +25,7 @@ export const COL_COMPANIES      = 'companies_metadata';
 export const COL_ACCESS_CONTROL = 'user_access_control';
 export const COL_SEARCH_INDEX   = 'user_search_index';
 export const COL_PC_AGENTS      = 'pc_agents';
+export const COL_COMPUTER_INVENTORY = 'computer_inventory'; // written by CollectComputerData.ps1
 
 // ── Token cache ────────────────────────────────────────────────────────────
 let adminToken            = '';
@@ -366,7 +367,14 @@ export async function listRecords(collection, params = {}) {
 
   return cachedFetch(
       () => request('GET', url, token).then(res => {
-        if (!res.ok) throw new Error(`listRecords(${collection}) HTTP ${res.status}`);
+        if (!res.ok) {
+          // Surface PocketBase's own error text (e.g. "Invalid sort parameter
+          // format" or a specific unknown-field message) instead of a bare
+          // status code — callers and the person reading the toast both need
+          // this to actually diagnose a 400.
+          const serverMsg = res.data?.message || parseErrors(res.data);
+          throw new Error(`listRecords(${collection}) HTTP ${res.status}${serverMsg ? `: ${serverMsg}` : ''}`);
+        }
         return res.data;
       }),
       cacheKey,

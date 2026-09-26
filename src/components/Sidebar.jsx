@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldCheck, Building2, FolderTree,
   Database, RefreshCw, ChevronLeft, ChevronRight, LogOut,
-  Monitor, MousePointer, FolderOpen, Package, User, AtomIcon, Tv
+  Monitor, MousePointer, FolderOpen, Package, User, AtomIcon, Tv, Laptop
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePcControl } from '../context/PcControlContext';
@@ -21,6 +21,7 @@ const navItems = [
   { path: '/roles',       icon: ShieldCheck,    label: 'Roles',            requiredPermission: 'manage_roles' },
   { path: '/departments', icon: FolderTree,     label: 'Departments',      requiredPermission: 'view_all_users' },
   { path: '/companies',   icon: Building2,      label: 'Companies',        requiredPermission: 'manage_companies' },
+  { path: '/inventory',   icon: Laptop,         label: 'Computer Inventory', requiredPermission: 'view_analytics', altPermission: 'database_manager' },
   { section: 'System' },
   { path: '/database',    icon: Database,       label: 'Database Manager', requiredPermission: 'database_manager' },
   { path: '/sync',        icon: RefreshCw,      label: 'Sync Queue',       requiredPermission: 'system_settings' },

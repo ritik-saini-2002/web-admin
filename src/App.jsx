@@ -21,6 +21,7 @@ const Departments     = lazy(() => import('./pages/Departments'));
 const Companies       = lazy(() => import('./pages/Companies'));
 const DatabaseManager = lazy(() => import('./pages/DatabaseManager'));
 const SyncQueue       = lazy(() => import('./pages/SyncQueue'));
+const ComputerInventory = lazy(() => import('./pages/ComputerInventory'));
 const RemoteControl   = lazy(() => import('./pages/RemoteControl'));
 const Touchpad        = lazy(() => import('./pages/Touchpad'));
 const FileBrowser     = lazy(() => import('./pages/FileBrowser'));
@@ -101,6 +102,7 @@ function AppRoutes() {
             <Route path="/roles"     element={<PermissionRoute permission="manage_roles"><Roles /></PermissionRoute>} />
             <Route path="/departments" element={<PermissionRoute permission="view_all_users"><Departments /></PermissionRoute>} />
             <Route path="/companies" element={<PermissionRoute permission="manage_companies"><Companies /></PermissionRoute>} />
+            <Route path="/inventory" element={<ComputerInventory />} />
             <Route path="/database"  element={<PermissionRoute permission="database_manager"><DatabaseManager /></PermissionRoute>} />
             <Route path="/sync"      element={<PermissionRoute permission="system_settings"><SyncQueue /></PermissionRoute>} />
             {/* PC Control */}
