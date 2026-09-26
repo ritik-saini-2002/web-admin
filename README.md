@@ -21,6 +21,35 @@ For PC Control to work, the server machine must be able to reach each target PC 
 
 The bundled agent reference in `agent/agent_v12.py` uses command port `5000`, stream port `5001`, default user key `Saini@2004`, and master key `Ritik@2004`.
 
+## TV Control (Samsung Tizen)
+
+A new **TV Control** page (sidebar, under PC Control) talks directly to the
+built-in remote-control interface every network-connected Samsung TV ships
+with (Tizen, ~2016+) — nothing is installed on the TV itself.
+
+- `src/api/tvControlApi.js` — the WebSocket/REST client (see the comments at
+  the top of the file for protocol notes and caveats).
+- `src/context/TvControlContext.jsx` — connection state, same pattern as
+  `PcControlContext`.
+- `src/pages/TvControl.jsx` — Connect / Remote / Touchpad & Keyboard / Apps tabs.
+- `/tvproxy/<ip>/<port>/...` — a small relay (added to both `vite.config.js`
+  and `production-server.mjs`, mirroring `/pcproxy/`) used only for the TV's
+  plain REST endpoint. The remote-control WebSocket itself is opened directly
+  by the browser and does **not** go through this relay.
+
+First connection: enter the TV's IP, hit Connect, and accept the "Allow this
+device?" prompt that appears on the TV screen. The pairing token is then
+saved to `localStorage` (`itc_tv_control`) so future connections skip the prompt.
+
+## production-server.mjs
+
+This file is required by `npm run serve` / `npm run start` but was missing
+from earlier project exports. It's a small dependency-free Node server that
+serves `dist/` and provides the same `/pcproxy/` and `/tvproxy/` relays the
+Vite dev server provides via `vite.config.js`. If you already have your own
+version of this file with additional logic, keep yours and just make sure it
+also relays `/tvproxy/<ip>/<port>/...` the same way it relays `/pcproxy/`.
+
 PocketBase is configured through `.env`:
 
 ```text

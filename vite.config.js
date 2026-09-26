@@ -121,12 +121,98 @@ function pcProxyPlugin() {
   }
 }
 
+/**
+ * Same idea as pcProxyPlugin, but for Samsung TV REST calls.
+ *
+ * NOTE: this is only needed for the TV's plain HTTP endpoints (device info).
+ * The TV's WebSocket remote-control channel is opened DIRECTLY from the
+ * browser (ws:// isn't subject to CORS the way fetch() is), so it does not
+ * go through this proxy — see src/api/tvControlApi.js for details.
+ *
+ * Route format: /tvproxy/<ip>/<port>/rest/of/path?query
+ */
+function tvProxyPlugin() {
+  return {
+    name: 'tv-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url.startsWith('/tvproxy/')) return next()
+
+        const stripped = req.url.slice('/tvproxy/'.length)
+        const parts = stripped.split('/')
+        if (parts.length < 3) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: 'Invalid proxy URL. Use /tvproxy/<ip>/<port>/<path>' }))
+          return
+        }
+
+        const targetIp = parts[0]
+        const targetPort = parts[1]
+        const pathAndQuery = '/' + parts.slice(2).join('/')
+        const targetUrl = `http://${targetIp}:${targetPort}${pathAndQuery}`
+        const parsed = new URL(targetUrl)
+
+        let responded = false
+
+        const proxyReq = http.request({
+          hostname: parsed.hostname,
+          port: parsed.port,
+          path: parsed.pathname + parsed.search,
+          method: req.method,
+          headers: { ...req.headers, host: `${targetIp}:${targetPort}` },
+          timeout: 6000,
+        }, (proxyRes) => {
+          if (responded || res.headersSent) return
+          responded = true
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.statusCode = proxyRes.statusCode
+          Object.entries(proxyRes.headers).forEach(([key, value]) => {
+            if (key.toLowerCase() !== 'transfer-encoding') res.setHeader(key, value)
+          })
+          proxyRes.pipe(res)
+        })
+
+        // 'timeout' fires first and destroys the socket, which then also
+        // emits 'error' — only the first of the two should write a response.
+        proxyReq.on('error', (err) => {
+          if (responded || res.headersSent) return
+          responded = true
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Failed to connect to TV', detail: err.message, target: targetUrl }))
+        })
+        proxyReq.on('timeout', () => {
+          proxyReq.destroy()
+          if (responded || res.headersSent) return
+          responded = true
+          res.statusCode = 504
+          res.end(JSON.stringify({ error: 'Connection timed out', target: targetUrl }))
+        })
+        proxyReq.end()
+      })
+
+      server.middlewares.use((req, res, next) => {
+        if (req.method === 'OPTIONS' && req.url.startsWith('/tvproxy/')) {
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+          res.setHeader('Access-Control-Allow-Headers', '*')
+          res.statusCode = 204
+          res.end()
+          return
+        }
+        next()
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
   plugins: [
     react(),
     pcProxyPlugin(),
+    tvProxyPlugin(),
   ],
   server: {
     host: '0.0.0.0',

@@ -2,10 +2,11 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldCheck, Building2, FolderTree,
   Database, RefreshCw, ChevronLeft, ChevronRight, LogOut,
-  Monitor, MousePointer, FolderOpen, Package, User, AtomIcon
+  Monitor, MousePointer, FolderOpen, Package, User, AtomIcon, Tv
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePcControl } from '../context/PcControlContext';
+import { useTvControl } from '../context/TvControlContext';
 
 /**
  * Navigation items with optional `requiredPermission`.
@@ -29,11 +30,13 @@ const navItems = [
   { path: '/files',       icon: FolderOpen,     label: 'File Browser',     requiredPermission: 'remote_access' },
   { path: '/apps',        icon: Package,        label: 'App Directory',    requiredPermission: 'remote_access' },
   { path: '/ai',   icon: AtomIcon,       label: 'AI control',       requiredPermission: 'remote_access' },
+  { path: '/tv',       icon: Tv,             label: 'TV Control',       requiredPermission: 'remote_access' },
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { logout, auth, hasPermission } = useAuth();
   const { connected: pcConnected } = usePcControl();
+  const { connected: tvConnected } = useTvControl();
   const location = useLocation();
 
   // Filter nav items based on permissions
@@ -76,6 +79,8 @@ export default function Sidebar({ collapsed, onToggle }) {
           const isActive = location.pathname === item.path ||
             (item.path !== '/' && location.pathname.startsWith(item.path));
           const isPcItem = ['/remote', '/touchpad', '/files', '/apps'].includes(item.path);
+          const isTvItem = item.path === '/tv';
+          const showBadge = (isPcItem && pcConnected) || (isTvItem && tvConnected);
           return (
             <NavLink
               key={item.path}
@@ -84,7 +89,7 @@ export default function Sidebar({ collapsed, onToggle }) {
             >
               <span className="nav-item-icon"><Icon size={19} /></span>
               <span className="nav-item-label">{item.label}</span>
-              {isPcItem && pcConnected && !collapsed && (
+              {showBadge && !collapsed && (
                 <span className="nav-item-badge" style={{ background: 'var(--accent-emerald)', fontSize: '0.6rem', padding: '1px 5px' }}>●</span>
               )}
             </NavLink>

@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { PcControlProvider } from './context/PcControlContext';
+import { TvControlProvider } from './context/TvControlContext';
 import Layout from './components/Layout';
 import { lazy, Suspense, Component } from 'react';
 
@@ -24,6 +25,7 @@ const RemoteControl   = lazy(() => import('./pages/RemoteControl'));
 const Touchpad        = lazy(() => import('./pages/Touchpad'));
 const FileBrowser     = lazy(() => import('./pages/FileBrowser'));
 const AppDirectory    = lazy(() => import('./pages/AppDirectory'));
+const TvControl       = lazy(() => import('./pages/TvControl'));   // ← NEW
 const Profile         = lazy(() => import('./pages/Profile'));
 const Aicontrol       = lazy(() => import('./ai/Aicontrol.jsx'));   // ← NEW
 
@@ -86,7 +88,9 @@ function AppRoutes() {
               element={
                 <ProtectedRoute>
                   <PcControlProvider>
-                    <Layout />
+                    <TvControlProvider>
+                      <Layout />
+                    </TvControlProvider>
                   </PcControlProvider>
                 </ProtectedRoute>
               }
@@ -105,6 +109,7 @@ function AppRoutes() {
             <Route path="/touchpad"  element={<PermissionRoute permission="remote_access"><Touchpad /></PermissionRoute>} />
             <Route path="/files"     element={<PermissionRoute permission="remote_access"><FileBrowser /></PermissionRoute>} />
             <Route path="/apps"      element={<PermissionRoute permission="remote_access"><AppDirectory /></PermissionRoute>} />
+            <Route path="/tv"        element={<PermissionRoute permission="remote_access"><TvControl /></PermissionRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
